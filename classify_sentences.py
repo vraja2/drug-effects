@@ -3,6 +3,7 @@ import nltk
 from nltk.corpus import stopwords
 from sklearn import svm
 from collections import defaultdict
+from itertools import compress
 from itertools import chain
 import random
 import gensim
@@ -24,40 +25,40 @@ class Classifier:
         #interleave comments with side effects to create a well balanced set
         self.interleaved_sentences = self.interleave_sentences()
         self.folds = self.create_k_folds(6,self.interleaved_sentences)
-        self.perform_cross_validation(self.folds)
         self.stops = set(stopwords.words('english'))
         #set of scraped side effects from SIDER
         self.se_unigrams = set(self.initialize_se_list())
         self.scraped_se_length = len(self.se_unigrams)
         #percent of data used for training
-        training_percent = 0.8
-        self.training_se, self.training_comments, self.all_training, self.test_sentences = self.initialize_traintest_data(training_percent)
+        #training_percent = 0.8
+        #self.training_se, self.training_comments, self.all_training, self.test_sentences = self.initialize_traintest_data(training_percent)
         #maps from word to the frequency is occurs in the side effect and comment corpuses
-        self.side_effect_freq = defaultdict(float) #10957 words
-        self.comment_freq = defaultdict(float) #15174 words
-        self.all_words = defaultdict(float)
-        self.total_word_count = 0.
-        self.compute_unigram_freq(self.training_se, self.training_comments)
+        #self.side_effect_freq = defaultdict(float) #10957 words
+        #self.comment_freq = defaultdict(float) #15174 words
+        #self.all_words = defaultdict(float)
+        #self.total_word_count = 0.
+        #self.compute_unigram_freq(self.training_se, self.training_comments)
         #maps from word to index in feature set 
-        self.se_feature_ind = self.build_unigram_feature_set(self.side_effect_freq.keys())
-        self.comment_feature_ind = self.build_unigram_feature_set(self.comment_freq.keys())
-        se_samples,se_labels = self.create_samples_labels(self.training_se,self.se_feature_ind,len(self.side_effect_freq.keys()))
+        #self.se_feature_ind = self.build_unigram_feature_set(self.side_effect_freq.keys())
+        #self.comment_feature_ind = self.build_unigram_feature_set(self.comment_freq.keys())
+        #se_samples,se_labels = self.create_samples_labels(self.training_se,self.se_feature_ind,len(self.side_effect_freq.keys()))
         self.MI = defaultdict(float)
         #to calculate mutual info pass in all the words (features) 
-        self.feature_word_set = self.compute_MI()
-        print self.feature_word_set
+        #self.feature_word_set = self.compute_MI()
+        #print self.feature_word_set
         #self.tfidf_se = defaultdict(float)
         #self.tfidf_comments = defaultdict(float)
         #se_features, comment_features = self.build_tfidf(self.training_se, self.training_comments)
         #put together all words that will be used ashttps://docs.google.com/spreadsheets/d/1LbZnzWfwkQcXrwBqBKtIP9dd_0iUt7uSQvN3l_462HU/edit#gid=0 features
         #self.feature_word_set = set(se_features).union(set(comment_features))
         #self.feature_word_set = self.feature_word_set.union(self.se_unigrams)
-        self.feature_ind = defaultdict(int)
+        #self.feature_ind = defaultdict(int)
         #print "building unigram feature set"
         #assign each feature to a certain index, create a dictionary that maps words to feature positions
-        self.feature_ind = self.build_unigram_feature_set(self.feature_word_set)
+        #self.feature_ind = self.build_unigram_feature_set(self.feature_word_set)
         #create feature vectors for each training example and labels as well
-        self.samples,self.labels = self.create_samples_labels(self.training_se+self.training_comments,self.feature_ind,len(self.feature_word_set))
+        #self.samples,self.labels = self.create_samples_labels(self.training_se+self.training_comments,self.feature_ind,len(self.feature_word_set))
+        self.perform_cross_validation(self.folds)
     
     def interleave_sentences(self):
         interleaved = []
@@ -104,7 +105,27 @@ class Classifier:
             curr_ind += 1"""
    
     def perform_cross_validation(self,folds):
-        
+        num_folds = len(folds)
+        indices = range(0,num_folds)
+        for hold_out in indices:
+            mask = [1]*num_folds
+            mask[hold_out] = 0
+            self.side_effect_freq = defaultdict(float) #10957 words
+            self.comment_freq = defaultdict(float) #15174 words
+            self.all_words = defaultdict(float)
+            self.total_word_count = 0.
+            training = list(compress(folds,mask))
+            training = list(chain.from_iterable(training))
+            self.training_se = [train_data for train_data in training if train_data[1] == 1]
+            self.training_comments = [train_data for train_data in training if train_data[1] == 0]
+            self.compute_unigram_freq(self.training_se, self.training_comments)
+            self.test_sentences = folds[hold_out]
+            self.feature_word_set = self.compute_MI()
+            print self.feature_word_set
+            self.feature_ind = defaultdict(int)
+            self.feature_ind = self.build_unigram_feature_set(self.feature_word_set)
+            self.samples,self.labels = self.create_samples_labels(self.training_se+self.training_comments,self.feature_ind,len(self.feature_word_set))
+            self.run()
 
     def compute_MI(self): 
         se_conditional = self.compute_conditionals(self.training_se)
@@ -130,7 +151,7 @@ class Classifier:
         for word in sorted_feature_words:
             if word not in self.stops:
                 stop_words_removed.append(word)
-        return set(stop_words_removed[:300])
+        return set(stop_words_removed[:200])
 
     def log_wrapper(self,num):
         if num <= 0.:
@@ -301,7 +322,8 @@ class Classifier:
                     neg_correct += 1
         print "Accuracy is {} overall".format(overall_correct/(pos_total+neg_total))
         print "Accuracy is {} for positives".format(pos_correct/pos_total)
-        print "Accuracy is {} for negatives".format(neg_correct/neg_total)
+        if neg_total > 0:
+            print "Accuracy is {} for negatives".format(neg_correct/neg_total)
     
     def run(self):
         print "creating svm"
@@ -314,5 +336,4 @@ class Classifier:
 
 if __name__ == "__main__":
     c = Classifier()
-    c.run()
     
