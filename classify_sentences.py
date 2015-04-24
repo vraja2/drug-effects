@@ -2,6 +2,7 @@ import xlrd
 import nltk
 from nltk.corpus import stopwords
 from sklearn import svm
+from sklearn.metrics import precision_recall_fscore_support
 from collections import defaultdict
 from itertools import compress
 from itertools import chain
@@ -9,6 +10,7 @@ import random
 import gensim
 import math
 import re
+import pickle
 
 class Classifier:
     
@@ -43,6 +45,7 @@ class Classifier:
         #self.comment_feature_ind = self.build_unigram_feature_set(self.comment_freq.keys())
         #se_samples,se_labels = self.create_samples_labels(self.training_se,self.se_feature_ind,len(self.side_effect_freq.keys()))
         self.MI = defaultdict(float)
+        self.bigram_MI = defaultdict(float)
         #to calculate mutual info pass in all the words (features) 
         #self.feature_word_set = self.compute_MI()
         #print self.feature_word_set
@@ -60,6 +63,26 @@ class Classifier:
         #self.samples,self.labels = self.create_samples_labels(self.training_se+self.training_comments,self.feature_ind,len(self.feature_word_set))
         self.perform_cross_validation(self.folds)
     
+    def compute_POS_freq(self):
+        se_tag_freq = defaultdict(float)
+        comment_tag_freq = defaultdict(float)
+        print "Working on positive examples"
+        for sen_pair in self.side_effects[:10]:
+            se_sen = sen_pair[0]
+            tagged_sen = nltk.pos_tag(se_sen)
+            for tag_tup in tagged_sen:
+                se_tag_freq[tag_tup[1]] += 1
+        print "Working on negative examples"
+        for sen_pair in self.comments[:10]:
+            comment = sen_pair[0]
+            tagged_sen = nltk.pos_tag(se_sen) 
+            for tag_tup in tagged_sen:
+                comment_tag_freq[tag_tup[1]] += 1
+        se_output = open('se.pkl','wb')
+        comment_output = open('comment.pkl','wb')
+        pickle.dump(sorted(se_tag_freq,reverse=True),se_output)
+        pickle.dump(sorted(comment_tag_freq,reverse=True),comment_output)
+
     def interleave_sentences(self):
         interleaved = []
         i = 0
@@ -118,15 +141,70 @@ class Classifier:
             training = list(chain.from_iterable(training))
             self.training_se = [train_data for train_data in training if train_data[1] == 1]
             self.training_comments = [train_data for train_data in training if train_data[1] == 0]
+            self.training_all = training 
             self.compute_unigram_freq(self.training_se, self.training_comments)
+            self.compute_bigram_freq(self.training_se,self.training_comments)
             self.test_sentences = folds[hold_out]
             self.feature_word_set = self.compute_MI()
+            self.bigram_feature_set = self.compute_bigram_MI()
             print self.feature_word_set
+            print self.bigram_feature_set
+            #print self.feature_word_set
             self.feature_ind = defaultdict(int)
-            self.feature_ind = self.build_unigram_feature_set(self.feature_word_set)
-            self.samples,self.labels = self.create_samples_labels(self.training_se+self.training_comments,self.feature_ind,len(self.feature_word_set))
+            self.feature_ind  = self.build_feature_set(self.feature_word_set,self.bigram_feature_set)
+            self.total_features = len(self.feature_word_set)+len(self.bigram_feature_set)
+            #self.feature_ind = self.build_unigram_feature_set(self.feature_word_set)
+            self.samples, self.labels = self.create_empty_samples_labels(self.total_features,len(self.training_all))
+            self.update_unigram_features(self.training_all,self.feature_ind)
+            self.update_bigram_features(self.training_all,self.feature_ind)
+            #self.samples,self.labels = self.create_samples_labels(self.training_se+self.training_comments,self.feature_ind,self.total_features)
             self.run()
+    
+    def create_empty_samples_labels(self,num_features,num_training_examples):
+        labels = [0]*num_training_examples
+        samples = []
+        for i in range(num_training_examples):
+            samples.append([0]*num_features)
+        return samples,labels
+    
+    def update_unigram_features(self,training_data,feature_ind):
+        for k,sen_pair in enumerate(training_data):
+            sen = sen_pair[0]
+            label = sen_pair[1]
+            curr_sample = self.samples[k] 
+            for word in sen:
+                if word in feature_ind:
+                    feature_index = feature_ind[word]
+                    curr_sample[feature_index] = 1
+            self.labels[k] = label
 
+    def update_bigram_features(self,training_data,feature_ind):
+        for k,sen_pair in enumerate(training_data):
+            sen = sen_pair[0]
+            label = sen_pair[1]
+            curr_sample = self.samples[k] 
+            for j,word in enumerate(sen):
+                if j==0:
+                    continue
+                else:
+                    if (sen[j-1],word) in self.bigrams:  
+                        feature_index = feature_ind[(sen[j-1],word)]
+                        curr_sample[feature_index] = 1
+            
+    def compute_bigram_freq(self,side_effects,comments):
+        all_sentences = side_effects+comments
+        self.bigrams = defaultdict(float)
+        self.total_bigram_count = 0.
+        for sen_pair in all_sentences:
+            sen = sen_pair[0]
+            for k,word in enumerate(sen):
+                if k==0: 
+                    continue
+                else:
+                    self.bigrams[(sen[k-1],word)] += 1
+                    self.total_bigram_count += 1 
+        #return bigrams,total_bigram_count
+    
     def compute_MI(self): 
         se_conditional = self.compute_conditionals(self.training_se)
         comment_conditional = self.compute_conditionals(self.training_comments)
@@ -152,6 +230,27 @@ class Classifier:
             if word not in self.stops:
                 stop_words_removed.append(word)
         return set(stop_words_removed[:200])
+    
+    def compute_bigram_MI(self):
+        se_conditional = self.compute_bigram_conditionals(self.training_se)
+        comment_conditional = self.compute_bigram_conditionals(self.training_comments)
+        num_se_sentences = len(self.training_se)
+        num_comments = len(self.training_comments)
+        class_prob = 0.5
+        for bigram in self.bigrams.keys():
+            p_u1_c1 = se_conditional[bigram]/num_se_sentences
+            p_u1_c0 = comment_conditional[bigram]/num_comments
+            p_u0_c1 = 1-p_u1_c1
+            p_u0_c0 = 1-p_u1_c0
+            p_u1 = self.bigrams[bigram]/self.total_bigram_count
+            p_u0 = 1-p_u1
+            mi_u1_c1 = p_u1_c1*class_prob*self.log_wrapper(p_u1_c1/(p_u1*class_prob))
+            mi_u1_c0 = p_u1_c0*class_prob*self.log_wrapper(p_u1_c0/(p_u1*class_prob))
+            mi_u0_c1 = p_u0_c1*class_prob*self.log_wrapper(p_u0_c1/(p_u0*class_prob))
+            mi_u0_c0 = p_u0_c0*class_prob*self.log_wrapper(p_u0_c0/(p_u0*class_prob))
+            self.bigram_MI[bigram] = mi_u1_c1+mi_u1_c0+mi_u0_c1+mi_u0_c0 
+        sorted_feature_bigrams = sorted(self.bigram_MI,key=self.bigram_MI.get,reverse=True)
+        return sorted_feature_bigrams[:300]
 
     def log_wrapper(self,num):
         if num <= 0.:
@@ -165,12 +264,35 @@ class Classifier:
             for word in sentence:
                 conditional[word] += 1
         return conditional
+    
+    def compute_bigram_conditionals(self,sentence_label_pairs):
+        conditional = defaultdict(float)
+        for sen_pair in sentence_label_pairs:
+            sen = sen_pair[0]
+            for k,word in enumerate(sen):
+                if k==0: 
+                    continue
+                else:
+                    conditional[(sen[k-1],word)] += 1
+        return conditional
 
     def build_unigram_feature_set(self, word_set):
         feature_ind = defaultdict(int)
         curr_ind = 0
         for word in word_set:
             feature_ind[word] = curr_ind
+            curr_ind += 1
+        return feature_ind
+    
+    def build_feature_set(self,unigram_set,bigram_set):
+        feature_ind = defaultdict(int)
+        curr_ind = 0
+        #create unigram features
+        for word in unigram_set:
+            feature_ind[word] = curr_ind
+            curr_ind += 1
+        for bigram in bigram_set:
+            feature_ind[bigram] = curr_ind
             curr_ind += 1
         return feature_ind
 
@@ -293,7 +415,7 @@ class Classifier:
             idf = math.log(2/(1+(side_effect_freq[key]>0)))
             self.tfidf_comments[key] = tf*idf
         return sorted(self.tfidf_comments,key=self.tfidf_comments.get)[:500], sorted(self.tfidf_se,key=self.tfidf_se.get)[:500]
-
+    
     def evaluate(self):
         print "Running evaluation"
         pos_correct = 0.
@@ -301,15 +423,27 @@ class Classifier:
         neg_correct = 0.
         neg_total = 0.
         overall_correct = 0.
+        incorrectly_labeled = open('incorrectly_labeled.txt','a')
+        y_true = []
+        y_pred = []
         for sen_pair in self.test_sentences:
             sen = sen_pair[0]
             label = sen_pair[1]
-            feat_vector = [0]*len(self.feature_word_set)
+            y_true.append(label)
+            feat_vector = [0]*self.total_features
             for word in sen:
                 if word in self.feature_word_set:
                     feature_index = self.feature_ind[word]
                     feat_vector[feature_index] = 1
+            for j,word in enumerate(sen):
+                if j==0:
+                    continue
+                else:
+                    if (sen[j-1],word) in self.bigrams:  
+                        feature_index = self.feature_ind[(sen[j-1],word)]
+                        feat_vector[feature_index] = 1
             pred = self.classifier.predict(feat_vector)[0]
+            y_pred.append(pred)
             if label == 1:
                 pos_total += 1
             if label == 0:
@@ -320,6 +454,9 @@ class Classifier:
                     pos_correct += 1
                 else:
                     neg_correct += 1
+            else:
+                incorrectly_labeled.write("Classified sentence '{}' with true label {} incorrectly as {}\n".format(sen,label,pred))
+        print precision_recall_fscore_support(y_true,y_pred,average='weighted')
         print "Accuracy is {} overall".format(overall_correct/(pos_total+neg_total))
         print "Accuracy is {} for positives".format(pos_correct/pos_total)
         if neg_total > 0:
@@ -327,7 +464,7 @@ class Classifier:
     
     def run(self):
         print "creating svm"
-        self.classifier = svm.SVC()
+        self.classifier = svm.LinearSVC()
         self.classifier.fit(self.samples, self.labels)
         print "evaluating svm"
         self.evaluate()
