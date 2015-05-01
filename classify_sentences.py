@@ -1,21 +1,27 @@
 import xlrd
 import nltk
+import jsonrpc
+import string
+import random
+import gensim
+import math
+import re
+from simplejson import loads
 from nltk.corpus import stopwords
 from sklearn import svm
 from sklearn.metrics import precision_recall_fscore_support
 from collections import defaultdict
 from itertools import compress
 from itertools import chain
-import random
-import gensim
-import math
-import re
-import pickle
+from stanford_corenlp_pywrapper import sockwrap
+import cPickle as pickle
 
 class Classifier:
     
     def __init__(self):
         excel_fpath = 'data.xls'
+        self.se_raw_sentences = []
+        self.comment_raw_sentences = []
         #get all side effect and comment sentences
         self.side_effects,self.comments = self.initialize_dataset(excel_fpath)
         #9000 sentences
@@ -23,46 +29,19 @@ class Classifier:
         #6198 sentences
         self.num_comment_sentences = len(self.comments)
         self.total_num_sentences = self.num_se_sentences+self.num_comment_sentences
-        print self.total_num_sentences
         #interleave comments with side effects to create a well balanced set
-        self.interleaved_sentences = self.interleave_sentences()
+        self.interleaved_sentences,self.raw_interleaved = self.interleave_sentences()
+        #load dependency parses for each sentence
+        self.dep_parses = pickle.load(open('./dep_parse_final.pkl','rb'))
         self.folds = self.create_k_folds(6,self.interleaved_sentences)
         self.stops = set(stopwords.words('english'))
         #set of scraped side effects from SIDER
         self.se_unigrams = set(self.initialize_se_list())
         self.scraped_se_length = len(self.se_unigrams)
-        #percent of data used for training
-        #training_percent = 0.8
-        #self.training_se, self.training_comments, self.all_training, self.test_sentences = self.initialize_traintest_data(training_percent)
-        #maps from word to the frequency is occurs in the side effect and comment corpuses
-        #self.side_effect_freq = defaultdict(float) #10957 words
-        #self.comment_freq = defaultdict(float) #15174 words
-        #self.all_words = defaultdict(float)
-        #self.total_word_count = 0.
-        #self.compute_unigram_freq(self.training_se, self.training_comments)
-        #maps from word to index in feature set 
-        #self.se_feature_ind = self.build_unigram_feature_set(self.side_effect_freq.keys())
-        #self.comment_feature_ind = self.build_unigram_feature_set(self.comment_freq.keys())
-        #se_samples,se_labels = self.create_samples_labels(self.training_se,self.se_feature_ind,len(self.side_effect_freq.keys()))
         self.MI = defaultdict(float)
         self.bigram_MI = defaultdict(float)
-        #to calculate mutual info pass in all the words (features) 
-        #self.feature_word_set = self.compute_MI()
-        #print self.feature_word_set
-        #self.tfidf_se = defaultdict(float)
-        #self.tfidf_comments = defaultdict(float)
-        #se_features, comment_features = self.build_tfidf(self.training_se, self.training_comments)
-        #put together all words that will be used ashttps://docs.google.com/spreadsheets/d/1LbZnzWfwkQcXrwBqBKtIP9dd_0iUt7uSQvN3l_462HU/edit#gid=0 features
-        #self.feature_word_set = set(se_features).union(set(comment_features))
-        #self.feature_word_set = self.feature_word_set.union(self.se_unigrams)
-        #self.feature_ind = defaultdict(int)
-        #print "building unigram feature set"
-        #assign each feature to a certain index, create a dictionary that maps words to feature positions
-        #self.feature_ind = self.build_unigram_feature_set(self.feature_word_set)
-        #create feature vectors for each training example and labels as well
-        #self.samples,self.labels = self.create_samples_labels(self.training_se+self.training_comments,self.feature_ind,len(self.feature_word_set))
-        self.perform_cross_validation(self.folds)
-    
+        self.perform_cross_validation(self.folds)   
+
     def compute_POS_freq(self):
         se_tag_freq = defaultdict(float)
         comment_tag_freq = defaultdict(float)
@@ -85,14 +64,17 @@ class Classifier:
 
     def interleave_sentences(self):
         interleaved = []
+        raw_interleaved = []
         i = 0
         while i < self.num_comment_sentences:
             interleaved.extend([self.comments[i],self.side_effects[i]])
+            raw_interleaved.extend([self.comment_raw_sentences[i],self.se_raw_sentences[i]])
             i += 1
         while i < self.num_se_sentences:
             interleaved.extend([self.side_effects[i]])
+            raw_interleaved.extend([self.se_raw_sentences[i]])
             i += 1
-        return interleaved
+        return interleaved,raw_interleaved
 
     def initialize_dataset(self,fpath):
         workbook = xlrd.open_workbook(fpath)
@@ -102,11 +84,13 @@ class Classifier:
         comments = []
         num_rows = worksheet.nrows
         for row in range(1,num_rows):
+            self.se_raw_sentences.append(worksheet.cell_value(row,0))
             se_split = [word.lower() for word in re.findall(r"\w+", worksheet.cell_value(row,0))]
             comment_split = [word.lower() for word in re.findall(r"\w+", worksheet.cell_value(row,1))]
             side_effects.append([se_split,1])
             #fewer comments than side effects
             if comment_split:
+                self.comment_raw_sentences.append(worksheet.cell_value(row,1))
                 comments.append([comment_split,0])
         return side_effects,comments
     
@@ -119,14 +103,6 @@ class Classifier:
                 seffect_set.add(se.lower().rstrip())
         return seffect_set
     
-    """def build_unigram_feature_set(self,num_features=1000):
-        #maps from feature (specific word) to the index of its binry feature
-        self.feature_ind = defaultdict(int)
-        curr_ind = 0
-        for word in self.feature_word_set:
-            self.feature_ind[word] = curr_ind
-            curr_ind += 1"""
-   
     def perform_cross_validation(self,folds):
         num_folds = len(folds)
         indices = range(0,num_folds)
@@ -147,12 +123,14 @@ class Classifier:
             self.test_sentences = folds[hold_out]
             self.feature_word_set = self.compute_MI()
             self.bigram_feature_set = self.compute_bigram_MI()
+            self.dep_feature_set = set(pickle.load(open('deps.pkl','rb')))
             print self.feature_word_set
             print self.bigram_feature_set
+            print self.dep_feature_set
             #print self.feature_word_set
             self.feature_ind = defaultdict(int)
-            self.feature_ind  = self.build_feature_set(self.feature_word_set,self.bigram_feature_set)
-            self.total_features = len(self.feature_word_set)+len(self.bigram_feature_set)
+            self.feature_ind  = self.build_feature_set(self.feature_word_set,self.bigram_feature_set,self.dep_feature_set)
+            self.total_features = len(self.feature_word_set)+len(self.bigram_feature_set)+len(self.dep_feature_set)
             #self.feature_ind = self.build_unigram_feature_set(self.feature_word_set)
             self.samples, self.labels = self.create_empty_samples_labels(self.total_features,len(self.training_all))
             self.update_unigram_features(self.training_all,self.feature_ind)
@@ -190,7 +168,38 @@ class Classifier:
                     if (sen[j-1],word) in self.bigrams:  
                         feature_index = feature_ind[(sen[j-1],word)]
                         curr_sample[feature_index] = 1
-            
+    
+    def get_dependency_parse(self):
+        #dep_freq = defaultdict(float)
+        #we assume that stanford corenlp is running at 127.0.0.1:8080  
+        swrap = sockwrap.SockWrap("parse",corenlp_jars=["../stanford-corenlp-python/stanford-corenlp-full-2014-08-27/stanford-corenlp-3.4.1.jar",
+          "../stanford-corenlp-python/stanford-corenlp-full-2014-08-27/stanford-corenlp-3.4.1-models.jar"])
+        sentence_deps = []
+        for k,sen in enumerate(self.raw_interleaved):
+            se_sen = sen.lower()
+            try:
+                sen_parses = swrap.parse_doc(se_sen)['sentences']
+            except:
+                continue
+            if sen_parses == None:
+                sentence_deps.append(None)
+                continue
+            deps = []
+            for parse in sen_parses:
+                parse_deps = parse['deps_basic']
+                #deps.extend(parse['deps_basic'])
+                offsets = parse['char_offsets']
+                words = []
+                for offset in offsets:
+                    words.append(se_sen[offset[0]:offset[1]])
+                for dep in parse_deps:
+                    if dep[0] == 'root':
+                        deps.append((dep[0],'',words[dep[2]]))
+                    else:
+                        deps.append((dep[0],words[dep[1]],words[dep[2]]))
+            sentence_deps.append(deps)
+        pickle.dump(sentence_deps,open('dep_parses.pkl','wb'))
+
     def compute_bigram_freq(self,side_effects,comments):
         all_sentences = side_effects+comments
         self.bigrams = defaultdict(float)
@@ -250,7 +259,7 @@ class Classifier:
             mi_u0_c0 = p_u0_c0*class_prob*self.log_wrapper(p_u0_c0/(p_u0*class_prob))
             self.bigram_MI[bigram] = mi_u1_c1+mi_u1_c0+mi_u0_c1+mi_u0_c0 
         sorted_feature_bigrams = sorted(self.bigram_MI,key=self.bigram_MI.get,reverse=True)
-        return sorted_feature_bigrams[:300]
+        return set(sorted_feature_bigrams[:300])
 
     def log_wrapper(self,num):
         if num <= 0.:
@@ -284,7 +293,7 @@ class Classifier:
             curr_ind += 1
         return feature_ind
     
-    def build_feature_set(self,unigram_set,bigram_set):
+    def build_feature_set(self,unigram_set,bigram_set,dep_feature_set):
         feature_ind = defaultdict(int)
         curr_ind = 0
         #create unigram features
@@ -293,6 +302,9 @@ class Classifier:
             curr_ind += 1
         for bigram in bigram_set:
             feature_ind[bigram] = curr_ind
+            curr_ind += 1
+        for dep in dep_feature_set:
+            feature_ind[dep] = curr_ind
             curr_ind += 1
         return feature_ind
 
@@ -311,44 +323,6 @@ class Classifier:
             labels.append(label)
         return samples,labels
 
-
-
-    """
-    def build_unigram_feature_set(self,num_features=1000):
-        #maps from feature (specific word) to the index of its binry feature
-        self.feature_ind = defaultdict(int)
-        curr_ind = 0
-        for se in self.se_unigrams:
-            self.feature_ind[se] = curr_ind
-            curr_ind += 1
-        #TODO: fix this later, limiting number of sentences to go through due to too many features from unigram
-        for sen_pair in random.sample(self.all_training,2000):
-            sen = sen_pair[0]
-            label = sen_pair[1]
-            for word in sen:
-                if curr_ind == num_features:
-                    break
-                if word not in self.stops and word not in self.feature_word_set:
-                    self.feature_word_set.add(word)
-                    self.feature_ind[word] = curr_ind
-                    curr_ind += 1"""
-    """ 
-    def create_samples_labels(self,num_features=1000):
-        samples = []
-        labels = []
-        for sen_pair in self.all_training:
-            sen = sen_pair[0]
-            label = sen_pair[1]
-            curr_sample = [0]*num_features
-            for word in sen:
-                if word in self.feature_word_set:
-                    feature_index = self.feature_ind[word]
-                    curr_sample[feature_index] = 1
-            samples.append(curr_sample)
-            labels.append(label)
-        return samples,labels
-    """
-    
     def create_k_folds(self, k, data):
         folds = []
         fold_length = self.total_num_sentences/k
