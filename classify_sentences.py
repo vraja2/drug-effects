@@ -34,6 +34,7 @@ class Classifier:
         #load dependency parses for each sentence
         self.dep_parses = pickle.load(open('./dep_parse_final.pkl','rb'))
         self.folds = self.create_k_folds(6,self.interleaved_sentences)
+        self.dep_parse_folds = self.create_k_folds(6,self.dep_parses)
         self.stops = set(stopwords.words('english'))
         #set of scraped side effects from SIDER
         self.se_unigrams = set(self.initialize_se_list())
@@ -85,8 +86,8 @@ class Classifier:
         num_rows = worksheet.nrows
         for row in range(1,num_rows):
             self.se_raw_sentences.append(worksheet.cell_value(row,0))
-            se_split = [word.lower() for word in re.findall(r"\w+", worksheet.cell_value(row,0))]
-            comment_split = [word.lower() for word in re.findall(r"\w+", worksheet.cell_value(row,1))]
+            se_split = [word.lower() for word in re.findall(r"\w+\'*\w*", worksheet.cell_value(row,0))]
+            comment_split = [word.lower() for word in re.findall(r"\w+\'*\w*", worksheet.cell_value(row,1))]
             side_effects.append([se_split,1])
             #fewer comments than side effects
             if comment_split:
@@ -115,18 +116,27 @@ class Classifier:
             self.total_word_count = 0.
             training = list(compress(folds,mask))
             training = list(chain.from_iterable(training))
+            training_deps = list(compress(self.dep_parse_folds,mask))
+            training_deps = list(chain.from_iterable(training_deps))
             self.training_se = [train_data for train_data in training if train_data[1] == 1]
             self.training_comments = [train_data for train_data in training if train_data[1] == 0]
+            self.training_se_deps = [deps for k,deps in enumerate(training_deps) if training[k][1] == 1]
+            self.training_comments_deps = [deps for k,deps in enumerate(training_deps) if training[k][1] == 0]
             self.training_all = training 
             self.compute_unigram_freq(self.training_se, self.training_comments)
             self.compute_bigram_freq(self.training_se,self.training_comments)
+            self.compute_dependency_freq(training_deps)
             self.test_sentences = folds[hold_out]
-            self.feature_word_set = self.compute_MI()
-            self.bigram_feature_set = self.compute_bigram_MI()
-            self.dep_feature_set = set(pickle.load(open('deps.pkl','rb')))
-            print self.feature_word_set
-            print self.bigram_feature_set
-            print self.dep_feature_set
+            self.test_deps = self.dep_parse_folds[hold_out]
+            self.feature_word_set = self.compute_MI(self.training_se,self.training_comments,
+                self.all_words,self.total_word_count,self.compute_conditionals,200)
+            self.bigram_feature_set = self.compute_MI(self.training_se,self.training_comments,
+                self.bigrams,self.total_bigram_count,self.compute_bigram_conditionals,300)
+            self.dep_feature_set = self.compute_MI(self.training_se_deps,self.training_comments_deps,
+                self.dep_freq,self.total_dep_count,self.compute_dep_conditional,20)
+            #print self.feature_word_set
+            #print self.bigram_feature_set
+            #print self.dep_feature_set
             #print self.feature_word_set
             self.feature_ind = defaultdict(int)
             self.feature_ind  = self.build_feature_set(self.feature_word_set,self.bigram_feature_set,self.dep_feature_set)
@@ -135,6 +145,7 @@ class Classifier:
             self.samples, self.labels = self.create_empty_samples_labels(self.total_features,len(self.training_all))
             self.update_unigram_features(self.training_all,self.feature_ind)
             self.update_bigram_features(self.training_all,self.feature_ind)
+            self.update_dep_features(training_deps,self.feature_ind)
             #self.samples,self.labels = self.create_samples_labels(self.training_se+self.training_comments,self.feature_ind,self.total_features)
             self.run()
     
@@ -169,6 +180,15 @@ class Classifier:
                         feature_index = feature_ind[(sen[j-1],word)]
                         curr_sample[feature_index] = 1
     
+    def update_dep_features(self,training_data,feature_ind):
+        for k,dep_sen in enumerate(training_data):
+            curr_sample = self.samples[k]
+            if dep_sen:
+                for dep in dep_sen:
+                  if dep in feature_ind:
+                      feature_index = feature_ind[dep] 
+                      curr_sample[feature_index] = 1
+
     def get_dependency_parse(self):
         #dep_freq = defaultdict(float)
         #we assume that stanford corenlp is running at 127.0.0.1:8080  
@@ -214,52 +234,36 @@ class Classifier:
                     self.total_bigram_count += 1 
         #return bigrams,total_bigram_count
     
-    def compute_MI(self): 
-        se_conditional = self.compute_conditionals(self.training_se)
-        comment_conditional = self.compute_conditionals(self.training_comments)
-        num_se_sentences = len(self.training_se)
-        num_comments = len(self.training_comments)
-        #p(C=1) or p(C=0), equally likely to contain side effects or not
-        class_prob = 0.5
-        for word in self.all_words.keys():
-            p_u1_c1 = se_conditional[word]/num_se_sentences
-            p_u1_c0 = comment_conditional[word]/num_comments
-            p_u0_c1 = 1-p_u1_c1
-            p_u0_c0 = 1-p_u1_c0
-            p_u1 = self.all_words[word]/self.total_word_count
-            p_u0 = 1-p_u1
-            mi_u1_c1 = p_u1_c1*class_prob*self.log_wrapper(p_u1_c1/(p_u1*class_prob))
-            mi_u1_c0 = p_u1_c0*class_prob*self.log_wrapper(p_u1_c0/(p_u1*class_prob))
-            mi_u0_c1 = p_u0_c1*class_prob*self.log_wrapper(p_u0_c1/(p_u0*class_prob))
-            mi_u0_c0 = p_u0_c0*class_prob*self.log_wrapper(p_u0_c0/(p_u0*class_prob))
-            self.MI[word] = mi_u1_c1+mi_u1_c0+mi_u0_c1+mi_u0_c0 
-        sorted_feature_words = sorted(self.MI,key=self.MI.get,reverse=True)
-        stop_words_removed = []
-        for word in sorted_feature_words:
-            if word not in self.stops:
-                stop_words_removed.append(word)
-        return set(stop_words_removed[:200])
+    def compute_dependency_freq(self,dep_parses):
+        self.dep_freq = defaultdict(float)
+        self.total_dep_count = 0.
+        for sentence_deps in dep_parses:
+            if sentence_deps:
+                for dep in sentence_deps:
+                    self.dep_freq[dep] += 1
+                    self.total_dep_count += 1
     
-    def compute_bigram_MI(self):
-        se_conditional = self.compute_bigram_conditionals(self.training_se)
-        comment_conditional = self.compute_bigram_conditionals(self.training_comments)
+    def compute_MI(self,training_pos,training_neg,feature_freq,total_feature_count,conditional_fn,num_features):
+        se_conditional = conditional_fn(training_pos)
+        comment_conditional = conditional_fn(training_neg)
         num_se_sentences = len(self.training_se)
         num_comments = len(self.training_comments)
         class_prob = 0.5
-        for bigram in self.bigrams.keys():
-            p_u1_c1 = se_conditional[bigram]/num_se_sentences
-            p_u1_c0 = comment_conditional[bigram]/num_comments
+        MI = defaultdict(float)
+        for feature in feature_freq.keys():
+            p_u1_c1 = se_conditional[feature]/num_se_sentences
+            p_u1_c0 = comment_conditional[feature]/num_comments
             p_u0_c1 = 1-p_u1_c1
             p_u0_c0 = 1-p_u1_c0
-            p_u1 = self.bigrams[bigram]/self.total_bigram_count
+            p_u1 = feature_freq[feature]/total_feature_count
             p_u0 = 1-p_u1
             mi_u1_c1 = p_u1_c1*class_prob*self.log_wrapper(p_u1_c1/(p_u1*class_prob))
             mi_u1_c0 = p_u1_c0*class_prob*self.log_wrapper(p_u1_c0/(p_u1*class_prob))
             mi_u0_c1 = p_u0_c1*class_prob*self.log_wrapper(p_u0_c1/(p_u0*class_prob))
             mi_u0_c0 = p_u0_c0*class_prob*self.log_wrapper(p_u0_c0/(p_u0*class_prob))
-            self.bigram_MI[bigram] = mi_u1_c1+mi_u1_c0+mi_u0_c1+mi_u0_c0 
-        sorted_feature_bigrams = sorted(self.bigram_MI,key=self.bigram_MI.get,reverse=True)
-        return set(sorted_feature_bigrams[:300])
+            MI[feature] = mi_u1_c1+mi_u1_c0+mi_u0_c1+mi_u0_c0 
+        sorted_features = sorted(MI,key=MI.get,reverse=True)
+        return set(sorted_features[:num_features])
 
     def log_wrapper(self,num):
         if num <= 0.:
@@ -284,6 +288,14 @@ class Classifier:
                 else:
                     conditional[(sen[k-1],word)] += 1
         return conditional
+
+    def compute_dep_conditional(self,dependencies):
+        conditional = defaultdict(float)
+        for dep_sen in dependencies:
+            if dep_sen:
+                for dep in dep_sen:
+                    conditional[dep] += 1
+        return conditional 
 
     def build_unigram_feature_set(self, word_set):
         feature_ind = defaultdict(int)
@@ -400,7 +412,7 @@ class Classifier:
         incorrectly_labeled = open('incorrectly_labeled.txt','a')
         y_true = []
         y_pred = []
-        for sen_pair in self.test_sentences:
+        for k,sen_pair in enumerate(self.test_sentences):
             sen = sen_pair[0]
             label = sen_pair[1]
             y_true.append(label)
@@ -415,6 +427,12 @@ class Classifier:
                 else:
                     if (sen[j-1],word) in self.bigrams:  
                         feature_index = self.feature_ind[(sen[j-1],word)]
+                        feat_vector[feature_index] = 1
+            dep_sen = self.test_deps[k]
+            if dep_sen:
+                for dep in dep_sen:
+                    if dep in self.dep_feature_set:
+                        feature_index = self.feature_ind[dep] 
                         feat_vector[feature_index] = 1
             pred = self.classifier.predict(feat_vector)[0]
             y_pred.append(pred)
@@ -442,8 +460,6 @@ class Classifier:
         self.classifier.fit(self.samples, self.labels)
         print "evaluating svm"
         self.evaluate()
-
-       
 
 if __name__ == "__main__":
     c = Classifier()
