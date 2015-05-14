@@ -1,14 +1,15 @@
 import xlrd
 import nltk
-import jsonrpc
 import string
 import random
 import gensim
 import math
 import re
+import random
 from simplejson import loads
 from nltk.corpus import stopwords
 from sklearn import svm
+from sklearn import linear_model
 from sklearn.metrics import precision_recall_fscore_support
 from collections import defaultdict
 from itertools import compress
@@ -19,29 +20,94 @@ import cPickle as pickle
 class Classifier:
     
     def __init__(self):
+        random.seed(3)
         excel_fpath = 'data.xls'
         self.se_raw_sentences = []
         self.comment_raw_sentences = []
         #get all side effect and comment sentences
-        self.side_effects,self.comments = self.initialize_dataset(excel_fpath)
+        self.nonlemma_side_effects,self.nonlemma_comments = self.initialize_dataset(excel_fpath)
+        #self.swrap = sockwrap.SockWrap("pos",corenlp_jars=["../stanford-corenlp-python/stanford-corenlp-full-2015-04-20/stanford-corenlp-3.5.2.jar",
+        #  "../stanford-corenlp-python/stanford-corenlp-full-2015-04-20/stanford-corenlp-3.5.2-models.jar"])
+        #self.se_lemmatized = self.lemmatize_sentences(self.se_raw_sentences,self.side_effects,swrap,1)
+        #self.comment_lemmatized = self.lemmatize_sentences(self.comment_raw_sentences,self.comments,swrap,0)
+        #pickle.dump(self.se_lemmatized,open('se_lemmatized.pkl','wb'))
+        #pickle.dump(self.comment_lemmatized,open('comment_lemmatized.pkl','wb'))
+        #print "Finished lemmatizing"
+        self.se_lemmatized = pickle.load(open('./se_lemmatized.pkl','rb'))
+        self.comment_lemmatized = pickle.load(open('./comment_lemmatized.pkl','rb'))
+        self.side_effects = self.se_lemmatized
+        self.comments = self.comment_lemmatized
+        #downsample positive samples to create a balanced dataset
+        self.side_effects = random.sample(self.side_effects,len(self.comments))
         #9000 sentences
         self.num_se_sentences = len(self.side_effects)
         #6198 sentences
         self.num_comment_sentences = len(self.comments)
         self.total_num_sentences = self.num_se_sentences+self.num_comment_sentences
         #interleave comments with side effects to create a well balanced set
-        self.interleaved_sentences,self.raw_interleaved = self.interleave_sentences()
+        self.interleaved_sentences,self.raw_interleaved,self.nonlemma_interleaved = self.interleave_sentences()
+        #self.write_sentences_to_file(self.raw_interleaved)
         #load dependency parses for each sentence
-        self.dep_parses = pickle.load(open('./dep_parse_final.pkl','rb'))
-        self.folds = self.create_k_folds(6,self.interleaved_sentences)
-        self.dep_parse_folds = self.create_k_folds(6,self.dep_parses)
+        #self.dep_parses = pickle.load(open('./dep_parse_final.pkl','rb'))
+        #self.lemmatized_deps = self.lemmatize_dependencies(self.swrap,self.dep_parses)
+        #pickle.dump(self.lemmatized_deps,open('lemmatized_deps.pkl','wb'))
+        self.dep_parses = pickle.load(open('./lemmatized_deps.pkl','rb'))
+        self.folds = self.create_k_folds(12,self.interleaved_sentences)
+        self.dep_parse_folds = self.create_k_folds(12,self.dep_parses)
+        self.non_lemma_folds = self.create_k_folds(12,self.nonlemma_interleaved)
         self.stops = set(stopwords.words('english'))
         #set of scraped side effects from SIDER
-        self.se_unigrams = set(self.initialize_se_list())
-        self.scraped_se_length = len(self.se_unigrams)
+        self.sider_feature_set = set(self.initialize_se_list())
+        self.scraped_se_length = len(self.sider_feature_set)
         self.MI = defaultdict(float)
         self.bigram_MI = defaultdict(float)
         self.perform_cross_validation(self.folds)   
+    
+    def write_sentences_to_file(self,sentences):
+        f = open('raw_sen_out.txt','w')
+        for sentence in sentences:
+            s = filter(lambda x: x in string.printable, sentence)
+            f.write("%s\n" % s)
+        print "finished writing"
+
+    def lemmatize_sentences(self,sentences,tokenized,swrap,label):
+        lemmatized_sentences = []
+        for k,sen in enumerate(sentences):
+            sentence = sen.lower()
+            print k
+            try:
+                sen_parses = swrap.parse_doc(sentence)['sentences']
+                sen_lemmas = []
+                for parse in sen_parses:
+                    lemmas = parse['lemmas'] 
+                    sen_lemmas.extend(lemmas) 
+                lemmatized_sentences.append([sen_lemmas,label])
+            except:
+                lemmatized_sentences.append(tokenized[k])
+        return lemmatized_sentences
+    
+    def lemmatize_dependencies(self,swrap,dep_parses):
+        lemmatized_deps = []
+        print len(dep_parses)
+        for k,sen_deps in enumerate(dep_parses):
+            print k
+            new_deps = []
+            if sen_deps:
+                for dep in sen_deps:
+                    w1_parse = swrap.parse_doc(dep[1])['sentences']
+                    w2_parse = swrap.parse_doc(dep[2])['sentences']
+                    if w1_parse:
+                        w1_lemma = w1_parse[0]['lemmas'][0]
+                    else:
+                        w1_lemma = dep[1]
+                    if w2_parse:
+                        w2_lemma = w2_parse[0]['lemmas'][0]
+                    else:
+                        w2_lemma = dep[2]
+                    new_dep = (dep[0],w1_lemma,w2_lemma)
+                    new_deps.append(new_dep)
+            lemmatized_deps.append(new_deps)
+        return lemmatized_deps 
 
     def compute_POS_freq(self):
         se_tag_freq = defaultdict(float)
@@ -66,16 +132,19 @@ class Classifier:
     def interleave_sentences(self):
         interleaved = []
         raw_interleaved = []
+        nonlemma_interleaved = []
         i = 0
         while i < self.num_comment_sentences:
             interleaved.extend([self.comments[i],self.side_effects[i]])
             raw_interleaved.extend([self.comment_raw_sentences[i],self.se_raw_sentences[i]])
+            nonlemma_interleaved.extend([self.nonlemma_comments[i],self.nonlemma_side_effects[i]])
             i += 1
         while i < self.num_se_sentences:
             interleaved.extend([self.side_effects[i]])
             raw_interleaved.extend([self.se_raw_sentences[i]])
+            nonlemma_interleaved.extend([self.nonlemma_side_effects[i]])
             i += 1
-        return interleaved,raw_interleaved
+        return interleaved,raw_interleaved,nonlemma_interleaved
 
     def initialize_dataset(self,fpath):
         workbook = xlrd.open_workbook(fpath)
@@ -107,7 +176,10 @@ class Classifier:
     def perform_cross_validation(self,folds):
         num_folds = len(folds)
         indices = range(0,num_folds)
+        avg_fscore = 0.
         for hold_out in indices:
+            #if hold_out == num_folds-1:
+            #    continue
             mask = [1]*num_folds
             mask[hold_out] = 0
             self.side_effect_freq = defaultdict(float) #10957 words
@@ -118,6 +190,7 @@ class Classifier:
             training = list(chain.from_iterable(training))
             training_deps = list(compress(self.dep_parse_folds,mask))
             training_deps = list(chain.from_iterable(training_deps))
+            #training_deps = self.lemmatize_dependencies(self.swrap,training_deps)
             self.training_se = [train_data for train_data in training if train_data[1] == 1]
             self.training_comments = [train_data for train_data in training if train_data[1] == 0]
             self.training_se_deps = [deps for k,deps in enumerate(training_deps) if training[k][1] == 1]
@@ -125,6 +198,7 @@ class Classifier:
             self.training_all = training 
             self.compute_unigram_freq(self.training_se, self.training_comments)
             self.compute_bigram_freq(self.training_se,self.training_comments)
+            self.compute_trigram_freq(self.training_se,self.training_comments)
             self.compute_dependency_freq(training_deps)
             self.test_sentences = folds[hold_out]
             self.test_deps = self.dep_parse_folds[hold_out]
@@ -133,21 +207,28 @@ class Classifier:
             self.bigram_feature_set = self.compute_MI(self.training_se,self.training_comments,
                 self.bigrams,self.total_bigram_count,self.compute_bigram_conditionals,300)
             self.dep_feature_set = self.compute_MI(self.training_se_deps,self.training_comments_deps,
-                self.dep_freq,self.total_dep_count,self.compute_dep_conditional,20)
+                self.dep_freq,self.total_dep_count,self.compute_dep_conditional,200)
+            self.trigram_feature_set = self.compute_MI(self.training_se,self.training_comments,
+                self.trigrams,self.total_trigram_count,self.compute_trigram_conditionals,100)
             #print self.feature_word_set
             #print self.bigram_feature_set
             #print self.dep_feature_set
             #print self.feature_word_set
+            #self.feature_word_set = self.feature_word_set.union(self.sider_feature_set)
             self.feature_ind = defaultdict(int)
-            self.feature_ind  = self.build_feature_set(self.feature_word_set,self.bigram_feature_set,self.dep_feature_set)
-            self.total_features = len(self.feature_word_set)+len(self.bigram_feature_set)+len(self.dep_feature_set)
+            self.feature_ind  = self.build_feature_set(self.feature_word_set,self.bigram_feature_set,self.trigram_feature_set,self.dep_feature_set)
+            self.total_features = len(self.feature_word_set)+len(self.bigram_feature_set)+len(self.trigram_feature_set)+len(self.dep_feature_set)
             #self.feature_ind = self.build_unigram_feature_set(self.feature_word_set)
             self.samples, self.labels = self.create_empty_samples_labels(self.total_features,len(self.training_all))
             self.update_unigram_features(self.training_all,self.feature_ind)
             self.update_bigram_features(self.training_all,self.feature_ind)
+            self.update_trigram_features(self.training_all,self.feature_ind)
             self.update_dep_features(training_deps,self.feature_ind)
             #self.samples,self.labels = self.create_samples_labels(self.training_se+self.training_comments,self.feature_ind,self.total_features)
-            self.run()
+            fscore = self.run()
+            avg_fscore += fscore
+        #downsampling so don't include last fold in the average
+        print "Average F-score: {}".format(avg_fscore/num_folds)
     
     def create_empty_samples_labels(self,num_features,num_training_examples):
         labels = [0]*num_training_examples
@@ -166,7 +247,7 @@ class Classifier:
                     feature_index = feature_ind[word]
                     curr_sample[feature_index] = 1
             self.labels[k] = label
-
+    
     def update_bigram_features(self,training_data,feature_ind):
         for k,sen_pair in enumerate(training_data):
             sen = sen_pair[0]
@@ -178,6 +259,19 @@ class Classifier:
                 else:
                     if (sen[j-1],word) in self.bigrams:  
                         feature_index = feature_ind[(sen[j-1],word)]
+                        curr_sample[feature_index] = 1
+    
+    def update_trigram_features(self,training_data,feature_ind):
+        for k,sen_pair in enumerate(training_data):
+            sen = sen_pair[0]
+            label = sen_pair[1]
+            curr_sample = self.samples[k] 
+            for j,word in enumerate(sen):
+                if j==0 or j==1:
+                    continue
+                else:
+                    if (sen[j-2],sen[j-1],word) in self.trigrams:  
+                        feature_index = feature_ind[(sen[j-2],sen[j-1],word)]
                         curr_sample[feature_index] = 1
     
     def update_dep_features(self,training_data,feature_ind):
@@ -234,6 +328,19 @@ class Classifier:
                     self.total_bigram_count += 1 
         #return bigrams,total_bigram_count
     
+    def compute_trigram_freq(self,side_effects,comments):
+        all_sentences = side_effects+comments
+        self.trigrams = defaultdict(float)
+        self.total_trigram_count = 0.
+        for sen_pair in all_sentences:
+            sen = sen_pair[0]
+            for k,word in enumerate(sen):
+                if k==0 or k==1:
+                    continue
+                else:
+                    self.trigrams[(sen[k-2],sen[k-1],word)] += 1
+                    self.total_trigram_count += 1
+
     def compute_dependency_freq(self,dep_parses):
         self.dep_freq = defaultdict(float)
         self.total_dep_count = 0.
@@ -288,7 +395,18 @@ class Classifier:
                 else:
                     conditional[(sen[k-1],word)] += 1
         return conditional
-
+    
+    def compute_trigram_conditionals(self,sentence_label_pairs):
+        conditional = defaultdict(float)
+        for sen_pair in sentence_label_pairs:
+            sen = sen_pair[0]
+            for k,word in enumerate(sen):
+                if k==0 or k==1: 
+                    continue
+                else:
+                    conditional[(sen[k-2],sen[k-1],word)] += 1
+        return conditional
+    
     def compute_dep_conditional(self,dependencies):
         conditional = defaultdict(float)
         for dep_sen in dependencies:
@@ -305,7 +423,7 @@ class Classifier:
             curr_ind += 1
         return feature_ind
     
-    def build_feature_set(self,unigram_set,bigram_set,dep_feature_set):
+    def build_feature_set(self,unigram_set,bigram_set,trigram_set,dep_feature_set):
         feature_ind = defaultdict(int)
         curr_ind = 0
         #create unigram features
@@ -314,6 +432,9 @@ class Classifier:
             curr_ind += 1
         for bigram in bigram_set:
             feature_ind[bigram] = curr_ind
+            curr_ind += 1
+        for trigram in trigram_set:
+            feature_ind[trigram] = curr_ind
             curr_ind += 1
         for dep in dep_feature_set:
             feature_ind[dep] = curr_ind
@@ -428,6 +549,13 @@ class Classifier:
                     if (sen[j-1],word) in self.bigrams:  
                         feature_index = self.feature_ind[(sen[j-1],word)]
                         feat_vector[feature_index] = 1
+            for j,word in enumerate(sen):
+                if j==0 or j==1:
+                    continue
+                else:
+                    if (sen[j-2],sen[j-1],word) in self.trigrams:  
+                        feature_index = self.feature_ind[(sen[j-2],sen[j-1],word)]
+                        feat_vector[feature_index] = 1
             dep_sen = self.test_deps[k]
             if dep_sen:
                 for dep in dep_sen:
@@ -448,18 +576,23 @@ class Classifier:
                     neg_correct += 1
             else:
                 incorrectly_labeled.write("Classified sentence '{}' with true label {} incorrectly as {}\n".format(sen,label,pred))
-        print precision_recall_fscore_support(y_true,y_pred,average='weighted')
+        prfs = precision_recall_fscore_support(y_true,y_pred,average='weighted')
+        print prfs
+        print "Num Wrong: {}".format(len(self.test_sentences)-overall_correct)
         print "Accuracy is {} overall".format(overall_correct/(pos_total+neg_total))
         print "Accuracy is {} for positives".format(pos_correct/pos_total)
         if neg_total > 0:
             print "Accuracy is {} for negatives".format(neg_correct/neg_total)
+        return prfs[2]
     
     def run(self):
         print "creating svm"
         self.classifier = svm.LinearSVC()
+        #self.classifier = linear_model.LogisticRegression()
         self.classifier.fit(self.samples, self.labels)
         print "evaluating svm"
-        self.evaluate()
+        fscore = self.evaluate()
+        return fscore
 
 if __name__ == "__main__":
     c = Classifier()
