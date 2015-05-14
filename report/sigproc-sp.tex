@@ -27,7 +27,7 @@
 % For tracking purposes - this is V3.1SP - APRIL 2009
 
 \documentclass{acm_proc_article-sp}
-
+\usepackage{supertabular}
 \begin{document}
 
 \title{Building a Classifier to Discover Sentences Containing Adverse Drug Reactions}
@@ -132,19 +132,93 @@ Rule-based ADR extraction methods were used by Sohn et al. \cite{Sohn}. The clin
 
 Although not related to ADR detection, Sondhi et al. \cite{Sondhi}  used similar features to our classifier when constructing a classification system to discriminate between two aspects of medical case descriptions, Physical Examination/Symptoms (PE) and Medications (MED), in medical forum data. PEs are defined as conditions for which treatments are being proposed and MEDs are the medications a person is currrently taking or intends to take. Some features used for the classification task include n-gram features, morphological features, and Unified Medical Language System (UMLS) features.
 
-\section{Methods}
-The problem we are trying to solve is a supervised learning problem. Thus, we have labeled data and we want to carefully choose features that allow us to discriminate between samples of different labels. The corpus we use was provided by Ask a Patient and it consists of 15,198 sentences where 9,000 are positive samples and 6,198 are negative samples. On the Ask a Patient website, a user's drug review is separated into various fields: rating, reason, side effects for <drug name>, comments, sex, age, duration/dosage, and date added. We consider the side-effects field as positive samples and the comments field as negative samples. Below is an example of an Ask a Patient user submitted review.
+\section{Problem Formulation}
 
-\section{Conclusions}
-This paragraph will end the body of this sample document.
-Remember that you might still have Acknowledgments or
-Appendices; brief samples of these
-follow.  There is still the Bibliography to deal with; and
-we will make a disclaimer about that here: with the exception
-of the reference to the \LaTeX\ book, the citations in
-this paper are to articles which have nothing to
-do with the present subject and are used as
-examples only.
+\section{Methods}
+The problem we are trying to solve is a supervised learning problem. Thus, we have labeled data and we want to carefully choose features that allow us to discriminate between samples of different labels. The corpus we use was provided by Ask a Patient and it consists of 15,198 sentences where 9,000 are positive samples and 6,198 are negative samples. On the Ask a Patient website, a user's drug review is separated into various fields: rating, reason, side effects for <drug name>, comments, sex, age, duration/dosage, and date added. We consider the side-effects field as positive samples and the comments field as negative samples. Below is an example of the relevant part of an Ask a Patient user submitted review.
+
+\begin{tabular}{| p{4cm} | p{4cm} |}
+\hline
+Side Effect (Positive) & Comment (Negative) \\ \hline
+Dizziness; shortness of breath; nausea; headache; flue like symptoms; fatigue & My doctor knows I have asthma and have an allergic reaction to penicillin and sulfa drugs and yet I was given this med anyway. \\ \hline
+\end{tabular} 
+
+For this task, we will use the Support Vector Machine (SVM) classifier. We use Python's machine learning toolkit scikit-learn and its implementation of linear SVM called LinearSVC.
+
+\subsection{Features}
+To perform classification, we use unigrams, bigrams, trigrams, dependency parse information, and side-effects crawled from SIDER as features. To do feature selection, we use mutual information. Mutual information is defined as: 
+\begin{gather*}
+ratio = log_2 \frac{P(F=e_f,C=e_c)}{P(F=e_f)P(C=e_c)} \\ \\
+MI(F;C) = \sum\limits_{e_f \in \{1,0\}} \sum\limits_{e_c \in \{1,0\}}P(F=e_f,C=e_c) \times ratio
+\end{gather*}
+$F$ is a random variable that represents whether a feature exists or not and $C$ is a random variable that represents which class is being dealt with. More generally, mutual information tells us how much knowing one variable reduces uncertainty about the other. If two variables are independent, the mutual information will be 0. Thus, for a feature, we can discover how much knowledge of that feature reduces uncertainty about the class. Those features with the highest mutual information with the class are the most discriminating features. Consequently, the features that are highest scoring are selected for our classifier.
+
+We describe each of our features below and show examples of the selected features. Note that we lemmatize the corpus using CoreNLP prior to selecting features.
+
+\subsubsection{Unigrams}
+Unigrams are individual words in the dataset. We first iterate through the training portion of the Ask a Patient dataset and construct a set of all the unigrams occurring inside of it. Next, we compute the mutual information for each unigram feature and sort the features by their respective mutual information scores. Oftentimes, there are stop words in the sorted unigram set, so we remove any words in the sorted list that also occur in NLTK's stop word list. We then select the top-n features. Below are some example words that are selected as unigram features: 
+
+\noindent\fbox{%
+    \parbox{8cm}{%
+        help, sleep, appetite, eat, worse, joint, side, weight, sex, horrible, medicine, symptom, anxiety, headache, heart, medication, body, mouth, extreme, depression
+    }%
+}
+
+Although the above is a subset of the retrieved unigram features, we noticed that most of the unigrams retrieved were relevant when discrminating between the classes.
+
+\subsubsection{Bigrams}
+Bigrams are contiguous pairs of words in the dataset. We iterate through the training data and construct a set of all unique bigrams occurring in it. In exactly the same way as we did for unigrams, we compute the mutual information for each bigram feature and sort the features by their respective mutual information scores. The top-n bigram features are selected. Below are some example bigrams that are selected as features:
+
+\noindent\fbox{%
+    \parbox{8cm}{%
+        (my, body), (dry, mouth), (stop, take), (a, month), (start, take), (the, pill), (the, drug), (the, side), (side, effect), (blood, pressure), (could, not), (the, medication), (this, medication), (weight, gain), (my, doctor), (to, stop), (year, ago), (my, period), (not, take), (mood, swing), (this, pill)
+    }%
+}
+
+\subsubsection{Trigrams}
+Trigrams are contiguous triplets of words in the dataset. We iterate through the training data and construct a set of all unique trigrams occurring in it. We then compute the mutual information for each trigram feature and sort the features by their respective mutual information scores. The top-n trigram features are selected. Below are some example trigrams that are selected as features:
+
+\noindent\fbox{%
+    \parbox{8cm}{%
+        (stop, take, it), (have, be, take), (do, not, have), (all, the, time), (no, side, effect), (seem, to, be), (think, it, be), (feel, like, I), (loss, of, appetite), (I, have, never), (do, not, take), (in, the, morning), (side, effect, be), (and, I, be), (I, be, not), (have, be, on), (I, have, a)
+    }%
+}
+
+\subsubsection{Dependency Parse Rules}
+We compute dependency parses for each sentence in the training corpus using Stanford's CoreNLP toolkit. Dependency parses contain useful relationship information between words. For example, consider the sentence ``After using it, I got a headache.'' We run Stanford's dependency parser on the sentence and obtain the following set of dependency rules:
+
+root ( ROOT-0 , got-6 ) \\
+prepc\_after ( got-6 , using-2 ) \\
+dobj ( using-2 , it-3 ) \\ 
+nsubj ( got-6 , I-5 ) \\
+det ( headache-8 , a-7 ) \\
+dobj ( got-6 , headache-8 ) 
+
+This parse is useful because after using mutual information to do feature selection on all of the individual rules that occur in the training set, we will most likely extract dependencies like dobj ( using-2 , it-3 ), nsubj ( got-6 , I-5 ), and dobj ( got-6 , headache-8 ). These extracted dependencies characterize sentences containing ADRs. Below are some example dependency rules that are selected as features:
+
+\noindent\fbox{%
+    \parbox{8cm}{%
+        (advmod, far, so), (pobj, for, week), (cc, have, but), (prep, help, with), (poss, doctor, my), (advmod, take, again), (dobj, take, medication), (dobj, take, drug), (dobj, have, effect), (neg, no, effect), (prep, loss, of), (nn, sex, drive), (nn, effect, side), (nn, mood, swing), (det, the, pain), (pobj, at, night), (dobj, take, pill), (poss, my, life)
+    }%
+}
+
+\subsubsection{SIDER Crawled Features}
+SIDER is a website that contains information about drugs and their confirmed ADRs. We crawl SIDER's side-effect list and tokenize multi-word side-effects into unigrams. From this process, we obtain 11,313 side-effect keywords that are treated as unigram features. Below are some of the side-effects crawled from SIDER:
+
+\noindent\fbox{%
+    \parbox{8cm}{%
+        indigestion, abscess, acne, blindness, disorder, haemorrhage, pneumonia, tryglycerides, arthritis, suicidal behavior, asthmatic attack, asocial behavior, stuttering, wheezing
+    }%
+}
+
+\subsection{Summary of Method}
+We first obtain dependency parses for sentences in the training set using CoreNLP. We then lemmatize the words in these dependencies and the sentences in the training set. Next, we use mutual information to select the most discriminative unigram, bigram, trigram, and dependency parse features. To finish feature selection, we add SIDER features to the set of unigram features. 
+
+Next, we create feature vectors for each training example. We first retrieve the unigrams, bigrams, trigrams, and dependency rules for the example. If any of these are in our feature set, we set the respective feature's flag to 1 in our feature vector. We pass all of the training feature vectors and their corresponding labels to a linear SVM to construct a model.
+
+Finally, to classify a test sentence, we use the aforementioned method to create a feature vector for the sentence and pass it to our previously constructed model to make a classification. 
+
+\section{Evaluation}
 %\end{document}  % This is where a 'short' article might terminate
 
 %ACKNOWLEDGMENTS are optional
