@@ -221,8 +221,36 @@ Next, we create feature vectors for each training example. We first retrieve the
 Finally, to classify a test sentence, we use the aforementioned method to create a feature vector for the sentence and pass it to our previously constructed model to make a classification. 
 
 \section{Evaluation}
-%\end{document}  % This is where a 'short' article might terminate
+\vspace{2mm}
+\subsection{Data}
+As mentioned earlier, the data we use is provided by Ask a Patient and it consists of 15,198 sentences where 9,000 describe side-effects (positive samples) and 6,198 are comments about drugs (negative samples). We also use 11,313 side-effect unigrams obtained from SIDER.
 
+\subsection{Experimental Setup}
+We first experiment with using each feature type in isolation and then try various combinations of feature types to find the best peforming one. We also tune the number of features from each feature type and aim to find the best performing distribution of features. The experiments we will run are defined below:
+\vspace{-3mm}
+\begin{enumerate}
+\setlength\itemsep{0.2em}
+\item SIDER features
+\item Unigrams
+\item Bigrams
+\item Trigrams
+\item Dependency Parse 
+\item Unigram + Bigram + Trigram
+\item SIDER + Unigram + Bigram + Trigram
+\item Unigram + Bigram + Trigram + Dependency Parse
+\item SIDER + Unigram + Bigram + Trigram + Dependency Parse
+\end{enumerate}
+
+\subsubsection{Cross Validation}
+Because we are dealing with an imbalanced dataset where we have more positive samples than negative, we use a downsampling scheme to equalize the classes. Thus, our modified dataset contains 6,198 positive samples and 6,198 negative samples. We choose to use 12-fold cross validation for our experiments where each fold contains 1033 samples.
+We report overall accuracy, precision for positives/negative samples, recall for positives/negative samples, and F1 score for positives/negative samples. 
+
+%\end{document}  % This is where a 'short' article might terminate
+\subsection{Results}
+
+\subsection{Analysis}
+
+\section{Conclusion and Future Work}
 %ACKNOWLEDGMENTS are optional
 \section{Acknowledgments}
 This section is optional; it is a location for you
