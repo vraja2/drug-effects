@@ -119,31 +119,7 @@ Consider the scenario where a new drug is approved by the FDA with only a subset
 
 An eventual system will continuously crawl Google to extract ADRs for newly FDA approved drugs. There are two main parts of this system. The first part is a classifier that discriminates between sentences that contain ADRs (positive) and sentences that do not (negative). When crawling Google results for a newly approved drug, our classifier will allow us to find only sentences that contain ADRs. The second half of our system will use the positively classified sentences to extract ADRs that are not on the FDA's list yet. In this paper we describe design of the first half of our system, which is the classifier. 
 
-The \textit{proceedings} are the records of a conference.
-ACM seeks to give these conference by-products a uniform,
-high-quality appearance.  To do this, ACM has some rigid
-requirements for the format of the proceedings documents: there
-is a specified format (balanced  double columns), a specified
-set of fonts (Arial or Helvetica and Times Roman) in
-certain specified sizes (for instance, 9 point for body copy),
-a specified live area (18 $\times$ 23.5 cm [7" $\times$ 9.25"]) centered on
-the page, specified size of margins (1.9 cm [0.75"]) top, (2.54 cm [1"]) bottom
-and (1.9 cm [.75"]) left and right; specified column width
-(8.45 cm [3.33"]) and gutter size (.83 cm [.33"]).
-
-The good news is, with only a handful of manual
-settings\footnote{Two of these, the {\texttt{\char'134 numberofauthors}}
-and {\texttt{\char'134 alignauthor}} commands, you have
-already used; another, {\texttt{\char'134 balancecolumns}}, will
-be used in your very last run of \LaTeX\ to ensure
-balanced column heights on the last page.}, the \LaTeX\ document
-class file handles all of this for you.
-
-The remainder of this document is concerned with showing, in
-the context of an ``actual'' document, the \LaTeX\ commands
-specifically available for denoting the structure of a
-proceedings paper, rather than with giving rigorous descriptions
-or explanations of such commands.
+The rest of this paper is organized as follows. The next section surveys existing work in the ADR detection domain. Section 3 describes the features used in classification. Section 4 discusses classification results and error analysis. Finally, Section 4 concludes the paper and discusses future work and improvements.
 
 \section{The {\secit Body} of The Paper}
 Typically, the body of a paper is organized
