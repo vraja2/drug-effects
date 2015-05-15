@@ -28,6 +28,8 @@
 
 \documentclass{acm_proc_article-sp}
 \usepackage{supertabular}
+\usepackage{caption}
+\DeclareCaptionType{copyrightbox}
 \begin{document}
 
 \title{Building a Classifier to Discover Sentences Containing Adverse Drug Reactions}
@@ -246,14 +248,37 @@ Because we are dealing with an imbalanced dataset where we have more positive sa
 We report overall accuracy, precision for positives/negative samples, recall for positives/negative samples, and F1 score for positives/negative samples. 
 
 \subsection{Results}
-To interpret our result tables, we provide a key for abbreviations. Overall $= \dfrac{\#\:correct}{total\:samples}$, P.P is the positive sample precision, P.R is the positive sample recall, and P.F1 is the positive sample F1 score. Negative sample results are abbreviated identically. 
+To interpret our result tables, we provide a key for abbreviations. Overall $= \dfrac{\#\:correct}{total\:samples}$, P.P is the positive sample precision, P.R is the positive sample recall, and P.F1 is the positive sample F1 score. Negative sample results are abbreviated similarly. 
 
 As a baseline, we first use all 11,313 SIDER unigrams as features. Our results are below:
 
+\captionof{table}{Isolated SIDER Results}
+\vspace{-3mm}
 \begin{tabular}{| l | l | l | l | l | l | l |}
 \hline
 Overall & P.P & P.R. & P.F1 & N.P & N.R & N.F1 \\ \hline
 74.62 & 73.82 & 76.43 & 75.08 & 75.53 & 72.81 & 74.13 \\ \hline
+\end{tabular} 
+
+Below are our isolated results for unigram, bigram, trigram, and dependency parse features that are selected with mutual information. $n$ is the number of highest scoring features selected. 
+\captionof{table}{Isolated Unigram Results}
+\vspace{-3mm}
+\begin{tabular}{| l | l | l | l | l | l | l | l |}
+\hline
+$n$ & Overall & P.P & P.R. & P.F1 & N.P & N.R & N.F1 \\ \hline
+100 & 79.57 & 80.25 & 78.44 & 79.33 & 78.93 & 80.69 & 79.79 \\ \hline
+200 & 81.15 & 81.74 & 80.22 & 80.96 & 80.60 & 82.08 & 80.96 \\ \hline
+300 & 82.38 & 83.31 & 80.99 & 82.13 & 81.52 & 83.77 & 82.62 \\ \hline
+\end{tabular} 
+
+\captionof{table}{Isolated Bigram Results}
+\vspace{-3mm}
+\begin{tabular}{| l | l | l | l | l | l | l | l |}
+\hline
+$n$ & Overall & P.P & P.R. & P.F1 & N.P & N.R & N.F1 \\ \hline
+100 & 75.16 & 72.43 & 81.28 & 76.59 & 78.69 & 69.04 & 73.53 \\ \hline
+200 & 77.11 & 74.54 & 82.38 & 78.25 & 80.33 & 82.38 & 75.82 \\ \hline
+300 & 78.15 & 76.04 & 82.20 & 78.99 & 80.66 & 74.09 & 77.22 \\ \hline
 \end{tabular} 
 
 \subsection{Analysis}
