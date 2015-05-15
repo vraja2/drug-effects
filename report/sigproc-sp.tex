@@ -205,7 +205,7 @@ This parse is useful because after using mutual information to do feature select
         (advmod, far, so), (pobj, for, week), (cc, have, but), (prep, help, with), (poss, doctor, my), (advmod, take, again), (dobj, take, medication), (dobj, take, drug), (dobj, have, effect), (neg, no, effect), (prep, loss, of), (nn, sex, drive), (nn, effect, side), (nn, mood, swing), (det, the, pain), (pobj, at, night), (dobj, take, pill), (poss, my, life)
     }%
 }
-
+\pagebreak
 \subsubsection{SIDER Crawled Features}
 SIDER is a website that contains information about drugs and their confirmed ADRs. We crawl SIDER's side-effect list and tokenize multi-word side-effects into unigrams. From this process, we obtain 11,313 side-effect keywords that are treated as unigram features. Below are some of the side-effects crawled from SIDER:
 
@@ -228,7 +228,7 @@ Finally, to classify a test sentence, we use the aforementioned method to create
 As mentioned earlier, the data we use is provided by Ask a Patient and it consists of 15,198 sentences where 9,000 describe side-effects (positive samples) and 6,198 are comments about drugs (negative samples). We also use 11,313 side-effect unigrams obtained from SIDER.
 
 \subsection{Experimental Setup}
-We first experiment with using each feature type in isolation and then try various combinations of feature types to find the best peforming one. We also tune the number of features from each feature type and aim to find the best performing distribution of features. The experiments we will run are defined below:
+We first experiment with using each feature type in isolation and then try various combinations of feature types to find the best peforming one. We also tune the number of features from each feature type and aim to find the best performing distribution of features. The experiments we will run are outlined below:
 \vspace{-3mm}
 \begin{enumerate}
 \setlength\itemsep{0.2em}
@@ -237,10 +237,10 @@ We first experiment with using each feature type in isolation and then try vario
 \item Bigrams
 \item Trigrams
 \item Dependency Parse 
+\item Unigram + Bigram
 \item Unigram + Bigram + Trigram
-\item SIDER + Unigram + Bigram + Trigram
-\item Unigram + Bigram + Trigram + Dependency Parse
-\item SIDER + Unigram + Bigram + Trigram + Dependency Parse
+\item Unigram + Bigram + Dependency Parse
+\item Unigram + Bigram + Dependency Parse + SIDER
 \end{enumerate}
 
 \subsubsection{Cross Validation}
@@ -254,6 +254,7 @@ As a baseline, we first use all 11,313 SIDER unigrams as features. Our results a
 
 \captionof{table}{Isolated SIDER Results}
 \vspace{-3mm}
+\tabcolsep=0.11cm
 \begin{tabular}{| l | l | l | l | l | l | l |}
 \hline
 Overall & P.P & P.R. & P.F1 & N.P & N.R & N.F1 \\ \hline
@@ -263,42 +264,46 @@ Overall & P.P & P.R. & P.F1 & N.P & N.R & N.F1 \\ \hline
 Below are our isolated results for unigram, bigram, trigram, and dependency parse features that are selected with mutual information. $n$ is the number of highest scoring features selected. 
 \captionof{table}{Isolated Unigram Results}
 \vspace{-3mm}
+\tabcolsep=0.11cm
 \begin{tabular}{| l | l | l | l | l | l | l | l |}
 \hline
 $n$ & Overall & P.P & P.R. & P.F1 & N.P & N.R & N.F1 \\ \hline
 100 & 79.57 & 80.25 & 78.44 & 79.33 & 78.93 & 80.69 & 79.79 \\ \hline
 200 & 81.15 & 81.74 & 80.22 & 80.96 & 80.60 & 82.08 & 80.96 \\ \hline
-300 & 82.38 & 83.31 & 80.99 & 82.13 & 81.52 & 83.77 & 82.62 \\ \hline
+300 & \bf{82.38} & \bf{83.31} & \bf{80.99} & \bf{82.13} & \bf{81.52} & \bf{83.77} & \bf{82.62} \\ \hline
 \end{tabular} 
 
 \captionof{table}{Isolated Bigram Results}
 \vspace{-3mm}
+\tabcolsep=0.11cm
 \begin{tabular}{| l | l | l | l | l | l | l | l |}
 \hline
 $n$ & Overall & P.P & P.R. & P.F1 & N.P & N.R & N.F1 \\ \hline
 100 & 75.16 & 72.43 & 81.28 & 76.59 & 78.69 & 69.04 & 73.53 \\ \hline
-200 & 77.11 & 74.54 & 82.38 & 78.25 & 80.33 & 82.38 & 75.82 \\ \hline
-300 & 78.15 & 76.04 & 82.20 & 78.99 & 80.66 & 74.09 & 77.22 \\ \hline
+200 & 77.11 & 74.54 & \bf{82.38} & 78.25 & 80.33 & \bf{82.38} & 75.82 \\ \hline
+300 & \bf{78.15} & \bf{76.04} & 82.20 & \bf{78.99} & \bf{80.66} & 74.09 & \bf{77.22} \\ \hline
 \end{tabular} 
 
 \captionof{table}{Isolated Trigram Results}
 \vspace{-3mm}
+\tabcolsep=0.11cm
 \begin{tabular}{| l | l | l | l | l | l | l | l |}
 \hline
 $n$ & Overall & P.P & P.R. & P.F1 & N.P & N.R & N.F1 \\ \hline
 100 & 71.89 & 68.51 & 81.06 & 74.25 & 76.85 & 62.73 & 69.06 \\ \hline
 200 & 73.13 & 69.83 & 81.48 & 75.19 & 77.83 & 64.78 & 70.68 \\ \hline
-300 & 73.64 & 70.39 & 81.62 & 75.58 & 78.17 & 65.65 & 71.35 \\ \hline
+300 & \bf{73.64} & \bf{70.39} & \bf{81.62} & \bf{75.58} & \bf{78.17} & \bf{65.65} & \bf{71.35} \\ \hline
 \end{tabular}
 
 \captionof{table}{Isolated Dependency Parse Results}
 \vspace{-3mm}
+\tabcolsep=0.11cm
 \begin{tabular}{| l | l | l | l | l | l | l | l |}
 \hline
 $n$ & Overall & P.P & P.R. & P.F1 & N.P & N.R & N.F1 \\ \hline
 100 & 73.76 & 70.67 & 81.27 & 75.57 & 78.07 & 66.25 & 71.63 \\ \hline
 200 & 76.12 & 73.54 & 81.69 & 77.63 & 79.51 & 70.56 & 74.71\\ \hline
-300 & 76.51 & 74.02 & 81.75 & 77.67 & 79.69 & 71.27 & 75.20 \\ \hline
+300 & \bf{76.51} & \bf{74.02} & \bf{81.75} & \bf{77.67} & \bf{79.69} & \bf{71.27} & \bf{75.20} \\ \hline
 \end{tabular} 
 \newpage
 
@@ -306,26 +311,62 @@ Now, we try different combinations of features. $u$ is the number of unigram fea
 \captionof{table}{Unigram + Bigram Results}
 \vspace{-3mm}
 \tabcolsep=0.11cm
+\resizebox{\linewidth}{0.8cm}{
 \begin{tabular}{| l | l | l | l | l | l | l | l | l |}
 \hline
 $u$ & $b$ & Overall & P.P & P.R. & P.F1 & N.P & N.R & N.F1 \\ \hline
-300 & 200 & 82.78 & 83.10 & 82.30 & 82.70 & 82.49 & 83.27 & 82.87 \\ \hline
-200 & 300 & 81.72 & 81.75 & 81.69 & 81.70 & 81.74 & 81.75 & 81.73 \\ \hline
+300 & 200 & \bf{82.78} & \bf{83.10} & \bf{82.30} & \bf{82.70} & \bf{82.49} & \bf{83.27} & \bf{82.87} \\ \hline
+200 & 300 & 81.69 & 81.85 & 81.44 & 81.63 & 81.58 & 81.93 & 81.74 \\ \hline
+300 & 300 & 82.59 & 82.83 & 82.24 & 82.52 & 82.39 & 82.95 & 82.66 \\ \hline
 \end{tabular} 
-
+}
 \captionof{table}{Unigram + Bigram + Trigram Results}
 \vspace{-3mm}
 \tabcolsep=0.11cm
+\resizebox{\linewidth}{1cm}{
 \begin{tabular}{| l | l | l | l | l | l | l | l | l | l |}
 \hline
 $u$ & $b$ & $t$ & Overall & P.P & P.R. & P.F1 & N.P & N.R & N.F1 \\ \hline
-300 & 200 & 50 & 82.78 & 83.00 & 82.44 & 82.71 & 82.58 & 83.11 & 82.71 \\ \hline
+300 & 200 & 50 & \bf{82.78} & \bf{83.00} & \bf{82.44} & \bf{82.71} & \bf{82.58} & \bf{83.11} & \bf{82.71} \\ \hline
 200 & 300 & 50 & 81.72 & 81.75 & 81.69 & 81.70 & 81.74 & 81.75 & 81.73 \\ \hline
 300 & 300 & 50 & 82.49 & 82.68 & 82.24 & 82.44 & 82.36 & 82.75 & 82.54\\ \hline
 300 & 200 & 100 & 82.56 & 82.87 & 82.12 & 82.49 & 82.30 & 83.03 & 82.66\\ \hline
 \end{tabular} 
+}
+\captionof{table}{Unigram + Bigram + Dependency Parse Results}
+\vspace{-3mm}
+\tabcolsep=0.11cm
+\resizebox{\linewidth}{1cm}{
+\begin{tabular}{| l | l | l | l | l | l | l | l | l | l |}
+\hline
+$u$ & $b$ & $d$ & Overall & P.P & P.R. & P.F1 & N.P & N.R & N.F1 \\ \hline
+200 & 300 & 200 & 83.74 & 83.53 & 83.16 & 83.32 & 83.27 & 83.59 & 83.42 \\ \hline
+300 & 300 & 200 & \bf{84.03} & \bf{84.52} & 83.32 & \bf{83.90} & 83.60 & \bf{84.74} & \bf{84.15} \\ \hline
+300 & 300 & 250 & 83.93 & 84.30 & 83.41 & 83.84 & 83.62 & 84.45 & 84.02\\ \hline
+300 & 300 & 150 & 84.01 & 84.39 & \bf{83.46} & \bf{83.90} & \bf{83.68} & 84.56 & 84.11\\ \hline
+\end{tabular} 
+}
 
+We set $u = 300$, $b = 300$, and $d = 200$ for the following experiment.
+\captionof{table}{Unigram + Bigram + Dependency Parse + SIDER Results}
+\vspace{-3mm}
+\tabcolsep=0.11cm
+\begin{tabular}{| l | l | l | l | l | l | l | l |}
+\hline
+$s$ & Overall & P.P & P.R. & P.F1 & N.P & N.R & N.F1 \\ \hline
+50 & \bf{84.10} & \bf{84.56} & \bf{83.45} & \bf{83.98} & \bf{83.71} & \bf{84.75} & \bf{84.21} \\ \hline
+100 & 84.02 & 84.49 & 83.35 & 83.90 & 83.62 & 84.69 & 84.13 \\ \hline
+\end{tabular} 
 \subsection{Analysis}
+
+In this section, we summarize the results of our experiments.
+
+\textbf{Unigram features perform better than bigram, trigram, and dependency parse feature in isolation.} 
+Our feature vectors will be sparse even with unigrams, but when using bigrams, trigrams, and dependency parse features it will be even more rare to find a feature in an input sentence. Consequently, the classifier will misclassify more frequently because there will be many feature vectors that are just zero vectors which will correspond to different labels.
+
+\textbf{Using too many trigram features negatively affects overall accuracy.} In isolation, trigrams perform poorly as features, but we do not base our conclusion off of those results. We instead first look at the Unigram + Bigram + Trigram results. When $u=300$,$b=200$, and $t=50$, the overall accuracy is $82.78\%$. When we increase $t$ to $100$, the overall accuracy dips slightly to $82.87\%$. We notice, however, that in our Unigram + Bigram results where $t$ is effectively $0$, the recall on positive samples drops from $82.44\%$ to $82.30\%$ and the precision on negative samples drops from $82.58\%$ to $82.49\%$
+
+\textbf{Dependency parse features significantly improve results all across the board.} Looking at our Unigram + Bigram results we see that using $u=300$ and $b=300$, we get an overall accuracy of $82.59\%$. By adding $200$ dependency parse features, our overall accuracy improves to $84.03\%$ and all of our other evaluation metric results improve as well. 
 
 \section{Conclusion and Future Work}
 %ACKNOWLEDGMENTS are optional
