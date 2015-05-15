@@ -230,7 +230,7 @@ We first experiment with using each feature type in isolation and then try vario
 \vspace{-3mm}
 \begin{enumerate}
 \setlength\itemsep{0.2em}
-\item SIDER features
+\item SIDER features (baseline)
 \item Unigrams
 \item Bigrams
 \item Trigrams
@@ -242,11 +242,19 @@ We first experiment with using each feature type in isolation and then try vario
 \end{enumerate}
 
 \subsubsection{Cross Validation}
-Because we are dealing with an imbalanced dataset where we have more positive samples than negative, we use a downsampling scheme to equalize the classes. Thus, our modified dataset contains 6,198 positive samples and 6,198 negative samples. We choose to use 12-fold cross validation for our experiments where each fold contains 1033 samples.
+Because we are dealing with an imbalanced dataset where we have more positive samples than negative, we use a downsampling scheme to equalize the classes. Thus, our modified dataset contains 6,198 positive samples and 6,198 negative samples. Sentence classes are interleaved (i.e positive, negative, positive, etc.) so that results are stabilized. We choose to use 12-fold cross validation for our experiments where each fold contains 1033 samples.
 We report overall accuracy, precision for positives/negative samples, recall for positives/negative samples, and F1 score for positives/negative samples. 
 
-%\end{document}  % This is where a 'short' article might terminate
 \subsection{Results}
+To interpret our result tables, we provide a key for abbreviations. Overall $= \dfrac{\#\:correct}{total\:samples}$, P.P is the positive sample precision, P.R is the positive sample recall, and P.F1 is the positive sample F1 score. Negative sample results are abbreviated identically. 
+
+As a baseline, we first use all 11,313 SIDER unigrams as features. Our results are below:
+
+\begin{tabular}{| l | l | l | l | l | l | l |}
+\hline
+Overall & P.P & P.R. & P.F1 & N.P & N.R & N.F1 \\ \hline
+74.62 & 73.82 & 76.43 & 75.08 & 75.53 & 72.81 & 74.13 \\ \hline
+\end{tabular} 
 
 \subsection{Analysis}
 
