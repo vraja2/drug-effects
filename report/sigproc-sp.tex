@@ -281,6 +281,50 @@ $n$ & Overall & P.P & P.R. & P.F1 & N.P & N.R & N.F1 \\ \hline
 300 & 78.15 & 76.04 & 82.20 & 78.99 & 80.66 & 74.09 & 77.22 \\ \hline
 \end{tabular} 
 
+\captionof{table}{Isolated Trigram Results}
+\vspace{-3mm}
+\begin{tabular}{| l | l | l | l | l | l | l | l |}
+\hline
+$n$ & Overall & P.P & P.R. & P.F1 & N.P & N.R & N.F1 \\ \hline
+100 & 71.89 & 68.51 & 81.06 & 74.25 & 76.85 & 62.73 & 69.06 \\ \hline
+200 & 73.13 & 69.83 & 81.48 & 75.19 & 77.83 & 64.78 & 70.68 \\ \hline
+300 & 73.64 & 70.39 & 81.62 & 75.58 & 78.17 & 65.65 & 71.35 \\ \hline
+\end{tabular}
+
+\captionof{table}{Isolated Dependency Parse Results}
+\vspace{-3mm}
+\begin{tabular}{| l | l | l | l | l | l | l | l |}
+\hline
+$n$ & Overall & P.P & P.R. & P.F1 & N.P & N.R & N.F1 \\ \hline
+100 & 73.76 & 70.67 & 81.27 & 75.57 & 78.07 & 66.25 & 71.63 \\ \hline
+200 & 76.12 & 73.54 & 81.69 & 77.63 & 79.51 & 70.56 & 74.71\\ \hline
+300 & 76.51 & 74.02 & 81.75 & 77.67 & 79.69 & 71.27 & 75.20 \\ \hline
+\end{tabular} 
+\newpage
+
+Now, we try different combinations of features. $u$ is the number of unigram features, $b$ is the number of bigram features, $t$ is the number of trigram features, $d$ is the number of dependency parse features, and $s$ is the number of SIDER features.
+\captionof{table}{Unigram + Bigram Results}
+\vspace{-3mm}
+\tabcolsep=0.11cm
+\begin{tabular}{| l | l | l | l | l | l | l | l | l |}
+\hline
+$u$ & $b$ & Overall & P.P & P.R. & P.F1 & N.P & N.R & N.F1 \\ \hline
+300 & 200 & 82.78 & 83.10 & 82.30 & 82.70 & 82.49 & 83.27 & 82.87 \\ \hline
+200 & 300 & 81.72 & 81.75 & 81.69 & 81.70 & 81.74 & 81.75 & 81.73 \\ \hline
+\end{tabular} 
+
+\captionof{table}{Unigram + Bigram + Trigram Results}
+\vspace{-3mm}
+\tabcolsep=0.11cm
+\begin{tabular}{| l | l | l | l | l | l | l | l | l | l |}
+\hline
+$u$ & $b$ & $t$ & Overall & P.P & P.R. & P.F1 & N.P & N.R & N.F1 \\ \hline
+300 & 200 & 50 & 82.78 & 83.00 & 82.44 & 82.71 & 82.58 & 83.11 & 82.71 \\ \hline
+200 & 300 & 50 & 81.72 & 81.75 & 81.69 & 81.70 & 81.74 & 81.75 & 81.73 \\ \hline
+300 & 300 & 50 & 82.49 & 82.68 & 82.24 & 82.44 & 82.36 & 82.75 & 82.54\\ \hline
+300 & 200 & 100 & 82.56 & 82.87 & 82.12 & 82.49 & 82.30 & 83.03 & 82.66\\ \hline
+\end{tabular} 
+
 \subsection{Analysis}
 
 \section{Conclusion and Future Work}
