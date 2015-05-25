@@ -11,11 +11,13 @@ from nltk.corpus import stopwords
 from sklearn import svm
 from sklearn import linear_model
 from sklearn.metrics import precision_recall_fscore_support
+from sklearn.cross_validation import KFold
 from collections import defaultdict
 from itertools import compress
 from itertools import chain
 from stanford_corenlp_pywrapper import sockwrap
 import cPickle as pickle
+import numpy as np
 
 class Classifier:
     
@@ -37,8 +39,28 @@ class Classifier:
         self.comment_lemmatized = pickle.load(open('./comment_lemmatized.pkl','rb'))
         self.side_effects = self.se_lemmatized
         self.comments = self.comment_lemmatized
+        self.np_se = np.array(self.side_effects)
+        self.dep_parses = pickle.load(open('./lemmatized_deps.pkl','rb'))
+        #9000 sentences
+        self.num_se_sentences = len(self.side_effects)
+        #6198 sentences
+        self.num_comment_sentences = len(self.comments)
+        self.total_num_sentences = self.num_se_sentences+self.num_comment_sentences
+        #hack to get consistency between dep parses and original interleaved sentences
+        self.full_interleaved_sentences,self.full_raw_interleaved, self.full_nonlemma_interleaved = self.interleave_sentences()
+        self.se_extracted = self.full_interleaved_sentences[1:2*len(self.comments):2]
+        self.se_extracted.extend(self.full_interleaved_sentences[2*len(self.comments):len(self.full_interleaved_sentences)])
+        self.dep_se = self.dep_parses[1:2*len(self.comments):2]
+        self.dep_se.extend(self.dep_parses[2*len(self.comments):len(self.full_interleaved_sentences)])
+        self.dep_se = np.array(self.dep_se)
         #downsample positive samples to create a balanced dataset
-        self.side_effects = random.sample(self.side_effects,len(self.comments))
+        self.rand_ind = random.sample(np.arange(0,len(self.se_extracted)),len(self.comments))
+        self.se_extracted = np.array(self.se_extracted)
+        self.side_effects = self.se_extracted[self.rand_ind]
+        self.rand_se_deps = self.dep_se[self.rand_ind] 
+        self.dep_parses = self.interleave_deps(self.dep_se)
+        #self.side_effects = self.side_effects[:len(self.comments)]
+        #self.side_effects = random.sample(self.side_effects,len(self.comments))
         #9000 sentences
         self.num_se_sentences = len(self.side_effects)
         #6198 sentences
@@ -51,7 +73,6 @@ class Classifier:
         #self.dep_parses = pickle.load(open('./dep_parse_final.pkl','rb'))
         #self.lemmatized_deps = self.lemmatize_dependencies(self.swrap,self.dep_parses)
         #pickle.dump(self.lemmatized_deps,open('lemmatized_deps.pkl','wb'))
-        self.dep_parses = pickle.load(open('./lemmatized_deps.pkl','rb'))
         self.folds = self.create_k_folds(12,self.interleaved_sentences)
         self.dep_parse_folds = self.create_k_folds(12,self.dep_parses)
         self.non_lemma_folds = self.create_k_folds(12,self.nonlemma_interleaved)
@@ -61,8 +82,19 @@ class Classifier:
         self.scraped_se_length = len(self.sider_feature_set)
         self.MI = defaultdict(float)
         self.bigram_MI = defaultdict(float)
-        self.perform_cross_validation(self.folds)   
+        #self.perform_cross_validation(self.folds)   
+        #self.scikit_cv(12)
+        self.train_full_data()
+        self.classify_google_sentences()
     
+    def interleave_deps(self,dep_se):
+        interleaved_deps = []
+        j=0
+        for i in range(0,2*len(self.comments),2):
+            interleaved_deps.extend([self.dep_parses[i],self.dep_se[j]])
+            j+=1
+        return interleaved_deps
+
     def write_sentences_to_file(self,sentences):
         f = open('raw_sen_out.txt','w')
         for sentence in sentences:
@@ -86,6 +118,23 @@ class Classifier:
                 lemmatized_sentences.append(tokenized[k])
         return lemmatized_sentences
     
+    def lemmatize_google_sentences(self,sentences,tokenized,swrap):
+        lemmatized_sentences = []
+        for k,sen in enumerate(sentences):
+            sentence = sen.lower()
+            print k
+            try:
+                sen_parses = swrap.parse_doc(sentence)['sentences']
+                sen_lemmas = []
+                for parse in sen_parses:
+                    lemmas = parse['lemmas'] 
+                    sen_lemmas.extend(lemmas) 
+                lemmatized_sentences.append(sen_lemmas)
+            except:
+                lemmatized_sentences.append(tokenized[k])
+        return lemmatized_sentences
+
+
     def lemmatize_dependencies(self,swrap,dep_parses):
         lemmatized_deps = []
         print len(dep_parses)
@@ -94,8 +143,10 @@ class Classifier:
             new_deps = []
             if sen_deps:
                 for dep in sen_deps:
-                    w1_parse = swrap.parse_doc(dep[1])['sentences']
-                    w2_parse = swrap.parse_doc(dep[2])['sentences']
+                    dep_1 = filter(lambda x: x in string.printable, dep[1])
+                    dep_2 = filter(lambda x: x in string.printable, dep[2])
+                    w1_parse = swrap.parse_doc(dep_1)['sentences']
+                    w2_parse = swrap.parse_doc(dep_2)['sentences']
                     if w1_parse:
                         w1_lemma = w1_parse[0]['lemmas'][0]
                     else:
@@ -173,10 +224,120 @@ class Classifier:
                 seffect_set.add(se.lower().rstrip())
         return seffect_set
     
+    def train_full_data(self):
+        print "Training"
+        train = self.interleaved_sentences
+        self.training_all = train 
+        self.training_se = [train_data for train_data in train if train_data[1] == 1]
+        self.training_comments = [train_data for train_data in train if train_data[1] == 0]
+        train_deps = self.dep_parses
+        self.training_se_deps = [deps for k,deps in enumerate(train_deps) if train[k][1] == 1]
+        self.training_comments_deps = [deps for k,deps in enumerate(train_deps) if train[k][1] == 0]
+        self.side_effect_freq = defaultdict(float) #10957 words
+        self.comment_freq = defaultdict(float) #15174 words
+        self.all_words = defaultdict(float)
+        self.total_word_count = 0.
+        self.compute_unigram_freq(self.training_se, self.training_comments)
+        self.compute_bigram_freq(self.training_se,self.training_comments)
+        self.compute_dependency_freq(train_deps)
+        self.trigram_feature_set = None
+        self.feature_word_set = self.compute_MI(self.training_se,self.training_comments,
+            self.all_words,self.total_word_count,self.compute_conditionals,300)
+        self.feature_word_set = self.feature_word_set.union(random.sample(self.sider_feature_set,50))
+        self.bigram_feature_set = self.compute_MI(self.training_se,self.training_comments,
+            self.bigrams,self.total_bigram_count,self.compute_bigram_conditionals,300)
+        self.dep_feature_set = self.compute_MI(self.training_se_deps,self.training_comments_deps,
+            self.dep_freq,self.total_dep_count,self.compute_dep_conditional,200)
+            
+        self.feature_ind = defaultdict(int)
+        self.feature_ind  = self.build_feature_set(self.feature_word_set,self.bigram_feature_set,self.trigram_feature_set,self.dep_feature_set)
+        self.total_features = len(self.feature_word_set)+len(self.bigram_feature_set)+len(self.dep_feature_set)
+        #self.total_features = len(self.feature_word_set)+len(self.bigram_feature_set)+len(self.trigram_feature_set)+len(self.dep_feature_set)
+        #self.feature_ind = self.build_unigram_feature_set(self.feature_word_set)
+        self.samples, self.labels = self.create_empty_samples_labels(self.total_features,len(self.training_all))
+        self.update_unigram_features(self.training_all,self.feature_ind)
+        self.update_bigram_features(self.training_all,self.feature_ind)
+        #self.update_trigram_features(self.training_all,self.feature_ind)
+        self.update_dep_features(train_deps,self.feature_ind)
+        #self.samples,self.labels = self.create_samples_labels(self.training_se+self.training_comments,self.feature_ind,self.total_features)
+        self.classifier = svm.LinearSVC()
+        self.classifier.fit(self.samples, self.labels)
+        print "Finished training"
+
+    def scikit_cv(self,num_folds):
+        kf = KFold(len(self.interleaved_sentences),n_folds=num_folds)
+        interleaved_np = np.array(self.interleaved_sentences)
+        avg_fscore = np.array([0.,0.])
+        avg_precision = np.array([0.,0.])
+        avg_recall = np.array([0.,0.])
+        avg_overall = 0.
+        for training,testing in kf:
+            #deps = self.dep_parses[:2*len(self.comments)]
+            deps = self.dep_parses
+            deps = np.array(deps)
+            #deps = deps[self.rand_ind]
+            self.side_effect_freq = defaultdict(float) #10957 words
+            self.comment_freq = defaultdict(float) #15174 words
+            self.all_words = defaultdict(float)
+            self.total_word_count = 0.
+            train,test = interleaved_np[training],interleaved_np[testing]   
+            train_deps,test_deps = deps[training],deps[testing]
+            self.test_deps = test_deps
+            self.training_se = [train_data for train_data in train if train_data[1] == 1]
+            self.training_comments = [train_data for train_data in train if train_data[1] == 0]
+            self.training_se_deps = [deps for k,deps in enumerate(train_deps) if train[k][1] == 1]
+            self.training_comments_deps = [deps for k,deps in enumerate(train_deps) if train[k][1] == 0]
+            self.training_all = train 
+            self.compute_unigram_freq(self.training_se, self.training_comments)
+            self.compute_bigram_freq(self.training_se,self.training_comments)
+            #self.compute_trigram_freq(self.training_se,self.training_comments)
+            self.compute_dependency_freq(train_deps)
+            #self.feature_word_set = None
+            #self.bigram_feature_set = None
+            self.trigram_feature_set = None
+            #self.dep_feature_set = None
+            #self.feature_word_set = self.sider_feature_set
+            
+            self.feature_word_set = self.compute_MI(self.training_se,self.training_comments,
+                self.all_words,self.total_word_count,self.compute_conditionals,300)
+            self.feature_word_set = self.feature_word_set.union(random.sample(self.sider_feature_set,50))
+            self.bigram_feature_set = self.compute_MI(self.training_se,self.training_comments,
+                self.bigrams,self.total_bigram_count,self.compute_bigram_conditionals,300)
+            self.dep_feature_set = self.compute_MI(self.training_se_deps,self.training_comments_deps,
+                self.dep_freq,self.total_dep_count,self.compute_dep_conditional,200)
+            #self.trigram_feature_set = self.compute_MI(self.training_se,self.training_comments,
+            #    self.trigrams,self.total_trigram_count,self.compute_trigram_conditionals,50)
+            
+            self.test_sentences = test
+            
+            self.feature_ind = defaultdict(int)
+            self.feature_ind  = self.build_feature_set(self.feature_word_set,self.bigram_feature_set,self.trigram_feature_set,self.dep_feature_set)
+            self.total_features = len(self.feature_word_set)+len(self.bigram_feature_set)+len(self.dep_feature_set)
+            #self.total_features = len(self.feature_word_set)+len(self.bigram_feature_set)+len(self.trigram_feature_set)+len(self.dep_feature_set)
+            #self.feature_ind = self.build_unigram_feature_set(self.feature_word_set)
+            self.samples, self.labels = self.create_empty_samples_labels(self.total_features,len(self.training_all))
+            self.update_unigram_features(self.training_all,self.feature_ind)
+            self.update_bigram_features(self.training_all,self.feature_ind)
+            #self.update_trigram_features(self.training_all,self.feature_ind)
+            self.update_dep_features(train_deps,self.feature_ind)
+            #self.samples,self.labels = self.create_samples_labels(self.training_se+self.training_comments,self.feature_ind,self.total_features)
+            prfs,overall_accuracy = self.run()
+            avg_overall += overall_accuracy
+            avg_precision += prfs[0]
+            avg_recall += prfs[1]
+            avg_fscore += prfs[2]
+        #downsampling so don't include last fold in the average
+        print "Average Overall: {}".format(avg_overall/num_folds)
+        print "Average Precision: {}".format(avg_precision/num_folds)
+        print "Average Recall: {}".format(avg_recall/num_folds)
+        print "Average F-score: {}".format(avg_fscore/num_folds)
+
     def perform_cross_validation(self,folds):
         num_folds = len(folds)
         indices = range(0,num_folds)
-        avg_fscore = 0.
+        avg_fscore = [0.,0.]
+        avg_precision = [0.,0.]
+        avg_recall = [0.,0.]
         for hold_out in indices:
             #if hold_out == num_folds-1:
             #    continue
@@ -203,29 +364,30 @@ class Classifier:
             self.test_sentences = folds[hold_out]
             self.test_deps = self.dep_parse_folds[hold_out]
             self.feature_word_set = self.compute_MI(self.training_se,self.training_comments,
-                self.all_words,self.total_word_count,self.compute_conditionals,200)
+                self.all_words,self.total_word_count,self.compute_conditionals,300)
             self.bigram_feature_set = self.compute_MI(self.training_se,self.training_comments,
                 self.bigrams,self.total_bigram_count,self.compute_bigram_conditionals,300)
             self.dep_feature_set = self.compute_MI(self.training_se_deps,self.training_comments_deps,
                 self.dep_freq,self.total_dep_count,self.compute_dep_conditional,200)
-            self.trigram_feature_set = self.compute_MI(self.training_se,self.training_comments,
-                self.trigrams,self.total_trigram_count,self.compute_trigram_conditionals,100)
+            #self.trigram_feature_set = self.compute_MI(self.training_se,self.training_comments,
+            #    self.trigrams,self.total_trigram_count,self.compute_trigram_conditionals,100)
             #print self.feature_word_set
             #print self.bigram_feature_set
-            #print self.dep_feature_set
+            print self.trigram_feature_set
+            print self.dep_feature_set
             #print self.feature_word_set
-            #self.feature_word_set = self.feature_word_set.union(self.sider_feature_set)
+            self.feature_word_set = self.feature_word_set.union(self.sider_feature_set)
             self.feature_ind = defaultdict(int)
             self.feature_ind  = self.build_feature_set(self.feature_word_set,self.bigram_feature_set,self.trigram_feature_set,self.dep_feature_set)
-            self.total_features = len(self.feature_word_set)+len(self.bigram_feature_set)+len(self.trigram_feature_set)+len(self.dep_feature_set)
+            self.total_features = len(self.feature_word_set)+len(self.bigram_feature_set)+len(self.dep_feature_set)
             #self.feature_ind = self.build_unigram_feature_set(self.feature_word_set)
             self.samples, self.labels = self.create_empty_samples_labels(self.total_features,len(self.training_all))
             self.update_unigram_features(self.training_all,self.feature_ind)
             self.update_bigram_features(self.training_all,self.feature_ind)
-            self.update_trigram_features(self.training_all,self.feature_ind)
+            #self.update_trigram_features(self.training_all,self.feature_ind)
             self.update_dep_features(training_deps,self.feature_ind)
             #self.samples,self.labels = self.create_samples_labels(self.training_se+self.training_comments,self.feature_ind,self.total_features)
-            fscore = self.run()
+            prfs = self.run()
             avg_fscore += fscore
         #downsampling so don't include last fold in the average
         print "Average F-score: {}".format(avg_fscore/num_folds)
@@ -260,6 +422,7 @@ class Classifier:
                     if (sen[j-1],word) in self.bigrams:  
                         feature_index = feature_ind[(sen[j-1],word)]
                         curr_sample[feature_index] = 1
+            self.labels[k] = label
     
     def update_trigram_features(self,training_data,feature_ind):
         for k,sen_pair in enumerate(training_data):
@@ -273,6 +436,7 @@ class Classifier:
                     if (sen[j-2],sen[j-1],word) in self.trigrams:  
                         feature_index = feature_ind[(sen[j-2],sen[j-1],word)]
                         curr_sample[feature_index] = 1
+            self.labels[k] = label
     
     def update_dep_features(self,training_data,feature_ind):
         for k,dep_sen in enumerate(training_data):
@@ -282,14 +446,17 @@ class Classifier:
                   if dep in feature_ind:
                       feature_index = feature_ind[dep] 
                       curr_sample[feature_index] = 1
+            self.labels[k] = self.training_all[k][1]
 
-    def get_dependency_parse(self):
+    def get_dependency_parse(self,raw_interleaved):
         #dep_freq = defaultdict(float)
         #we assume that stanford corenlp is running at 127.0.0.1:8080  
         swrap = sockwrap.SockWrap("parse",corenlp_jars=["../stanford-corenlp-python/stanford-corenlp-full-2014-08-27/stanford-corenlp-3.4.1.jar",
           "../stanford-corenlp-python/stanford-corenlp-full-2014-08-27/stanford-corenlp-3.4.1-models.jar"])
         sentence_deps = []
-        for k,sen in enumerate(self.raw_interleaved):
+        print len(raw_interleaved)
+        for k,sen in enumerate(raw_interleaved):
+            print k
             se_sen = sen.lower()
             try:
                 sen_parses = swrap.parse_doc(se_sen)['sentences']
@@ -433,9 +600,9 @@ class Classifier:
         for bigram in bigram_set:
             feature_ind[bigram] = curr_ind
             curr_ind += 1
-        for trigram in trigram_set:
+        """for trigram in trigram_set:
             feature_ind[trigram] = curr_ind
-            curr_ind += 1
+            curr_ind += 1"""
         for dep in dep_feature_set:
             feature_ind[dep] = curr_ind
             curr_ind += 1
@@ -523,6 +690,98 @@ class Classifier:
             self.tfidf_comments[key] = tf*idf
         return sorted(self.tfidf_comments,key=self.tfidf_comments.get)[:500], sorted(self.tfidf_se,key=self.tfidf_se.get)[:500]
     
+    def classify_google_sentences(self):
+         f = open('./google_sentences.txt','r')
+         sentences = f.readlines()
+         #dep_parses = self.get_dependency_parse(sentences)
+         #pickle.dump(dep_parses,open('google_dep_parses.pkl','wb'))
+         dep_parses = pickle.load(open('google_dep_parses.pkl','rb'))
+         #swrap =  sockwrap.SockWrap("pos",corenlp_jars=["../stanford-corenlp-python/stanford-corenlp-full-2015-04-20/stanford-corenlp-3.5.2.jar",
+         #  "../stanford-corenlp-python/stanford-corenlp-full-2015-04-20/stanford-corenlp-3.5.2-models.jar"])
+         lemmatized_dep_parses = pickle.load(open('lemmatized_goog_dep_parses.pkl','rb'))
+         #lemmatized_dep_parses = self.lemmatize_dependencies(swrap,dep_parses) 
+         #pickle.dump(lemmatized_dep_parses,open('lemmatized_goog_dep_parses.pkl','wb'))
+         processed_sentences = []
+         for sentence in sentences:
+             sen_split = [word.lower() for word in re.findall(r"\w+\'*\w*", sentence)]
+             #if sen_split:
+             processed_sentences.append(sen_split)
+         #lemmatize
+         processed_sentences = pickle.load(open('google_sentences_lemmatized.pkl','rb'))
+         #processed_sentences = self.lemmatize_google_sentences(sentences,processed_sentences,swrap)
+         #pickle.dump(processed_sentences,open('google_sentences_lemmatized.pkl','wb'))
+         positive_classified = []
+         for k,sentence in enumerate(processed_sentences):
+            feat_vector = [0]*self.total_features
+            for word in sentence:
+                if word in self.feature_word_set:
+                   feature_index = self.feature_ind[word]
+                   feat_vector[feature_index] = 1
+            for j,word in enumerate(sentence):
+                if j==0:
+                    continue
+                else:
+                    if (sentence[j-1],word) in self.bigrams:  
+                        feature_index = self.feature_ind[(sentence[j-1],word)]
+                        feat_vector[feature_index] = 1
+            dep_sen = lemmatized_dep_parses[k]
+            if dep_sen:
+                for dep in dep_sen:
+                    if dep in self.dep_feature_set:
+                        feature_index = self.feature_ind[dep] 
+                        feat_vector[feature_index] = 1
+            pred = self.classifier.predict(feat_vector)[0]
+            if pred == 1:
+                positive_classified.append(sentence)
+            print "'{}' classified as {}\n".format(sentence,pred)
+         all_freq_bigram_dict = defaultdict(float)
+         for sentence in processed_sentences:
+            for k,word in enumerate(sentence):
+                if k==0:
+                    continue
+                else:
+                    all_freq_bigram_dict[(sentence[k-1],word)] += 1
+         all_freq_unigram_dict = defaultdict(float)
+         for sentence in processed_sentences:
+            for word in sentence:
+                all_freq_unigram_dict[word] += 1
+         all_freq_trigram_dict = defaultdict(float)
+         for sentence in processed_sentences:
+            for k,word in enumerate(sentence):
+                if k==0 or k==1:
+                    continue
+                else:
+                    all_freq_trigram_dict[(sentence[k-2],sentence[k-1],word)] += 1
+         #create a frequency dictionary
+         positive_freq_unigram_dict = defaultdict(float)
+         for sentence in positive_classified:
+            for word in sentence:
+                positive_freq_unigram_dict[word] += 1
+         positive_freq_bigram_dict = defaultdict(float)
+         for sentence in positive_classified:
+            for k,word in enumerate(sentence):
+                if k==0:
+                    continue
+                else:
+                    positive_freq_bigram_dict[(sentence[k-1],word)] += 1
+         positive_freq_trigram_dict = defaultdict(float)
+         for sentence in positive_classified:
+            for k,word in enumerate(sentence):
+                if k==0 or k==1:
+                    continue
+                else:
+                    positive_freq_trigram_dict[(sentence[k-2],sentence[k-1],word)] += 1
+         #print sorted(positive_freq_unigram_dict,key=positive_freq_unigram_dict.get,reverse=True)[:50]
+         #print
+         #print sorted(all_freq_unigram_dict,key=all_freq_unigram_dict.get,reverse=True)[:50]
+         #print sorted(all_freq_bigram_dict,key=all_freq_bigram_dict.get,reverse=True)[:100]
+         #print
+         #print sorted(positive_freq_bigram_dict,key=positive_freq_bigram_dict.get,reverse=True)[:100]
+         #print
+         print sorted(positive_freq_trigram_dict,key=positive_freq_trigram_dict.get,reverse=True)[:50]
+         print
+         print sorted(all_freq_trigram_dict,key=all_freq_trigram_dict.get,reverse=True)[:50]
+    
     def evaluate(self):
         print "Running evaluation"
         pos_correct = 0.
@@ -549,13 +808,13 @@ class Classifier:
                     if (sen[j-1],word) in self.bigrams:  
                         feature_index = self.feature_ind[(sen[j-1],word)]
                         feat_vector[feature_index] = 1
-            for j,word in enumerate(sen):
+            """for j,word in enumerate(sen):
                 if j==0 or j==1:
                     continue
                 else:
                     if (sen[j-2],sen[j-1],word) in self.trigrams:  
                         feature_index = self.feature_ind[(sen[j-2],sen[j-1],word)]
-                        feat_vector[feature_index] = 1
+                        feat_vector[feature_index] = 1"""
             dep_sen = self.test_deps[k]
             if dep_sen:
                 for dep in dep_sen:
@@ -576,14 +835,15 @@ class Classifier:
                     neg_correct += 1
             else:
                 incorrectly_labeled.write("Classified sentence '{}' with true label {} incorrectly as {}\n".format(sen,label,pred))
-        prfs = precision_recall_fscore_support(y_true,y_pred,average='weighted')
+        prfs = precision_recall_fscore_support(y_true,y_pred)
+        overall_accuracy = overall_correct/(pos_total+neg_total)
         print prfs
         print "Num Wrong: {}".format(len(self.test_sentences)-overall_correct)
         print "Accuracy is {} overall".format(overall_correct/(pos_total+neg_total))
         print "Accuracy is {} for positives".format(pos_correct/pos_total)
         if neg_total > 0:
             print "Accuracy is {} for negatives".format(neg_correct/neg_total)
-        return prfs[2]
+        return prfs,overall_accuracy
     
     def run(self):
         print "creating svm"
