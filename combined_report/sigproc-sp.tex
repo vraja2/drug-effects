@@ -1,0 +1,469 @@
+% THIS IS SIGPROC-SP.TEX - VERSION 3.1
+% WORKS WITH V3.2SP OF ACM_PROC_ARTICLE-SP.CLS
+% APRIL 2009
+%
+% It is an example file showing how to use the 'acm_proc_article-sp.cls' V3.2SP
+% LaTeX2e document class file for Conference Proceedings submissions.
+% ----------------------------------------------------------------------------------------------------------------
+% This .tex file (and associated .cls V3.2SP) *DOES NOT* produce:
+%       1) The Permission Statement
+%       2) The Conference (location) Info information
+%       3) The Copyright Line with ACM data
+%       4) Page numbering
+% ---------------------------------------------------------------------------------------------------------------
+% It is an example which *does* use the .bib file (from which the .bbl file
+% is produced).
+% REMEMBER HOWEVER: After having produced the .bbl file,
+% and prior to final submission,
+% you need to 'insert'  your .bbl file into your source .tex file so as to provide
+% ONE 'self-contained' source file.
+%
+% Questions regarding SIGS should be sent to
+% Adrienne Griscti ---> griscti@acm.org
+%
+% Questions/suggestions regarding the guidelines, .tex and .cls files, etc. to
+% Gerald Murray ---> murray@hq.acm.org
+%
+% For tracking purposes - this is V3.1SP - APRIL 2009
+
+\documentclass{acm_proc_article-sp}
+\usepackage{supertabular}
+\usepackage{caption}
+\DeclareCaptionType{copyrightbox}
+\begin{document}
+
+\title{Discovering Adverse Drug Reactions for New FDA Approved Drugs Using Google Search Results}
+%
+% You need the command \numberofauthors to handle the 'placement
+% and alignment' of the authors beneath the title.
+%
+% For aesthetic reasons, we recommend 'three authors at a time'
+% i.e. three 'name/affiliation blocks' be placed beneath the title.
+%
+% NOTE: You are NOT restricted in how many 'rows' of
+% "name/affiliations" may appear. We just ask that you restrict
+% the number of 'columns' to three.
+%
+% Because of the available 'opening page real-estate'
+% we ask you to refrain from putting more than six authors
+% (two rows with three columns) beneath the article title.
+% More than six makes the first-page appear very cluttered indeed.
+%
+% Use the \alignauthor commands to handle the names
+% and affiliations for an 'aesthetic maximum' of six authors.
+% Add names, affiliations, addresses for
+% the seventh etc. author(s) as the argument for the
+% \additionalauthors command.
+% These 'additional authors' will be output/set for you
+% without further effort on your part as the last section in
+% the body of your article BEFORE References or any Appendices.
+
+\numberofauthors{1} %  in this sample file, there are a *total*
+% of EIGHT authors. SIX appear on the 'first-page' (for formatting
+% reasons) and the remaining two appear in the \additionalauthors section.
+%
+\author{
+% You can go ahead and credit any number of authors here,
+% e.g. one 'row of three' or two rows (consisting of one row of three
+% and a second row of one, two or three).
+%
+% The command \alignauthor (no curly braces needed) should
+% precede each author name, affiliation/snail-mail address and
+% e-mail address. Additionally, tag each line of
+% affiliation/address with \affaddr, and tag the
+% e-mail address with \email.
+%
+% 1st. author
+\alignauthor
+Vignesh Raja, Sheng Wang, ChengXiang Zhai\\
+       \affaddr{Department of Computer Science, College of Engineering}\\
+       \affaddr{University of Illinois at Urbana Champaign, Urbana, IL, 61801}\\
+       \email{\{vraja2,swang141,czhai\}@illinois.edu}
+       %\email{vraja2@illinois.edu,swang141@illinois.edu,czhai@illinois.edu}
+}
+% There's nothing stopping you putting the seventh, eighth, etc.
+% author on the opening page (as the 'third row') but we ask,
+% for aesthetic reasons that you place these 'additional authors'
+% in the \additional authors block, viz.
+% Just remember to make sure that the TOTAL number of authors
+% is the number that will appear on the first page PLUS the
+% number that will appear in the \additionalauthors section.
+
+\maketitle
+\begin{abstract}
+When the Food and Drug Administration (FDA) approves new drugs, it often takes years of public use for exhaustive adverse drug reaction (ADR) lists to be constructed. Oftentimes, the ADRs reported to the FDA are of poor quality. In recent years, patients have been posting their experiences with drugs on health forums, blogs, etc. In this paper, we construct a system to retrieve ADRs from Google search results. To take advantage of online information, we need to be able to discriminate between text that contains information about ADRs and text that does not. First, we create a classifier trained on sentence-level data from Ask a Patient, a website allowing patients to post about their experiences with specific drugs. We use unigrams, bigrams, trigrams, dependency parse information, and side-effects crawled from Side Effect Resource (SIDER) as features for our classifier. We perform evaluation using 12-fold cross validation on the Ask a Patient data which yields convincing results. Our overall accuracy is $84.10\%$, our F1 score on positive samples is $83.98$, and our F1 score on negative samples is $84.21$. In the next step, we use our classifier on the Google search results for a specific drug. We retrieve all the sentence classified as containing ADRs (positive samples), create bigrams, and sort based on bigram frequency. We similarly obtain bigram frequencies from the set of all sentences (both positive and negative samples) in the Google search results. We found that when considering the top-50 most frequent bigrams, recall of ADRs was higher for the set of positively classified sentences which shows that our classifier extends well to unseen Google search data.
+%Next, we retrieve the top $10$ search results for the query ``<drug name> side effects'', where ``<drug name>'' is the drug we are interested in finding ADRs for. We extract the text from the obtained webpages, and use our classifier to find sentences containing ADRs. Using exclusively positively classified sentences, 
+\end{abstract}
+
+% A category with the (minimum) three required fields
+\category{H.3.3}{Information Search and Retrieval}{Information Filtering}
+\category{I.5.2}{Design Methodology}{Classifier Design and Evaluation}
+\category{J.3}{Life and Medical Sciences}{Health}
+
+\terms{Design, Experimentation, Human Factors}
+
+\keywords{Adverse Drug Reactions, Machine Learning, Support Vector Machines, Feature Selection, Side Effect Resource, Ask a Patient} 
+
+\section{Introduction}
+%Define adverse drug events
+%Talk about ISMP report discussing FDA problems
+%Talk about relevant work
+An adverse drug reaction (ADR) is defined as an unexpected or dangerous response to taking a medication. The distinction between an ADR and a side-effect is that the latter includes positive outcomes of taking the drug. The Food and Drug Administration (FDA) has an ADR reporting program called MedWatch\footnote{http://www.fda.gov/Safety/MedWatch} which serves as the government's primary pharmacovigilance tool. Although MedWatch has an easy-to-use interface for submitting ADR descriptions, the data suffers from ambiguity and incompleteness. 
+
+When a patient who is using a medication is contacted by the drug's manufacturer and the manufacturer learns that the patient died, the company is forced to report the death to the FDA in all cases, even if the drug has no suspected role in the death.  According to the Institute for Safe Medication Practices (ISMP) 2014 Quarterly Watch\footnote{http://www.ismp.org/quarterwatch/pdfs/2014Q1.pdf}, it is estimated that in 28.5\% of reported deaths by pharmaceutical companies, there is no information clearly defining whether the drug at hand contributed to the deaths. Similarly, in several other cases, there is ambiguity about whether a drug worsens a patient's health condition, or if it is just a result of the ailment the patient is suffering from. 
+
+Many times, drug manufacturers will also report ADRs directly to the FDA. In theory, this is an effective way of obtaining ADR data. However, in practice, these reports are often of poor quality. Specifically, the ADRs reported are often common health problems such as ``cold'' or ``painful injection'' that aren't unique enough to specifically be attributed to the drug.
+
+Additionally, for drugs newly approved by the FDA, the initial list of ADRs is far from exhaustive. Clinical trials are limited to small groups of people and are conducted over short periods of time and as a result, every ADR may not be captured through these processes. For new drugs, it is important to find ADRs as soon as possible to limit the number of people afflicted by dangerous side-effects.
+
+Using the web as a reference for medical problems has become very popular in recent years. Forums such as HealthBoards\footnote{http://www.healthboards.com/boards/index.php} allow users to ask questions about and provide testimonials for many different drugs. Websites including Ask a Patient\footnote{http://www.askapatient.com} allow users to share the side-effects they experienced using different medications. Additionally, simply querying Google with the search terms ``<drug name> side effects'' or ``<drug name> adverse effects'' returns many different pages containing potential ADRs for a specific drug. 
+
+Consider the scenario where a new drug is approved by the FDA with only a subset of the full, true ADR list published. Suppose now that a user of this new drug experiences nausea, which has not been included as an ADR for the drug by the FDA. In addition to visiting the doctor, the user wants to consult the web for medical advice. The user posts on HealthBoards listing nausea as a condition he is experiencing. If more forum members reply to this user's post stating that they also are experiencing nausea, we recognize that nausea has a good chance of being an ADR of the new drug. Similar scenarios may also occur on other websites. We observe then that in addition to considering ADRs submitted directly to the FDA, we must also make use of the vast amount of drug data on other health websites to quickly and accurately construct a complete ADR list for a new drug.
+
+We construct a system that will continuously crawl Google to extract ADRs for new FDA approved drugs. There are two main parts of this system. The first part is a classifier that discriminates between sentences that contain ADRs (positive) and sentences that do not (negative). When crawling Google results for a newly approved drug, our classifier will allow us to find only sentences that contain ADRs. The second half of our system uses the positively classified sentences to extract ADRs that are not on the FDA's list yet. In this paper, we describe the design of this system.
+
+The rest of this paper is organized as follows. The next section surveys existing work in the ADR detection domain. Section 3 describes the problem formulation for our system. Section 4 describes the features used in classification. Section 5 discusses classification results, error analysis, and our experimentation on Google search data. Finally, Section 6 concludes the paper and discusses future work and improvements.
+
+\section{Related Work}
+A significant amount of work has been done on ADR detection systems. Carino and Lambert et al. \cite{Carino} share the same goal of discovering unrecognized side-effects. First, they construct a neural network to classify web pages as either being relevant to a query drug or not. Some features that they use for classification include the presence of diseases/symptoms, the distance between keywords such as ``side-effect'' and a disease/symptom, and the absence of expressions such as ``no side-effects''. After retrieving relevant webpages for a drug using the classifier, a fixed-length sliding window of contiguous complete sentences is used to determine the most relevant passage within the webpage; more specifically, this is the window with the largest number of relevant features. Our classification approach differs from that of Carino and Lambert because in our eventual system, we aim to iterate through every sentence in a webpage and classify each sentence as positive or negative and finally retrieve all the positively classified sentences. This allows us to retrieve a set of non-contiguous sentences. On the other hand, because Carino and Lambert use a sliding window, the set of sentences they extract is always contiguous. 
+
+Gurulingappa et al. \cite{Gurulingappa} worked on the task of classifying sentences as containing adverse drug events (ADE) or not. A distinction between our work and that of Gurulingappa's is that ADEs are a superset of ADRs; namely, ADRs imply a causative relationship between a drug and a reaction while ADEs refer to any injury occurring at the time a drug is used. Gurulingappa uses similar features to our system such as dependency parse information and n-grams, but to our knowledge, does not use mutual information to perform feature selection. In Gurulingappa's work, classification is done on sentences in medical reports, while the sentences we use are from Ask a Patient, which contains user submitted drug reviews. Typically, medical reports use more technical terminology than what a person would use in a forum or more casual website.
+
+Sampathkumar et al. \cite{Sampathkumar} used Hidden Markov Models (HMM) to mine ADRs from healthcare forums. Their system has three different modules: information retrieval, text processing, and information extraction. We pay special attention to the information extraction module because it is where relationships are established between entities of interest such as side-effects and drugs. First, to perform named entity recognition (NER), a dictionary is created out of side-effects and drugs crawled from Side Effect Resource (SIDER)\footnote{http://sideeffects.embl.de}. With the output of the NER system, HMMs are used to do relationship extraction, where relationships exist between named entities. Sampathkumar treats the problem as a sequence labeling task where the labels for tokens are ``drug'', ``keyword'', ``other'', and ``side-effect''.
+
+Rule-based ADR extraction methods were used by Sohn et al. \cite{Sohn}. The clinical Text Analysis and Knowledge Extraction System (cTAKES)\footnote{http://ctakes.apache.org}, an open source NLP system for the medical domain, is used to tag named entities. Named entities that are symptoms or diseases are tagged as potential side effects (PSE) and are used in many of the rules described by Sohn in his paper.
+
+Although not related to ADR detection, Sondhi et al. \cite{Sondhi}  used similar features to our classifier when constructing a classification system to discriminate between two aspects of medical case descriptions, Physical Examination/Symptoms (PE) and Medications (MED), in medical forum data. PEs are defined as conditions for which treatments are being proposed and MEDs are the medications a person is currrently taking or intends to take. Some features used for the classification task include n-grams, morphological information, and the Unified Medical Language System (UMLS).
+
+\section{Problem Formulation}
+\subsection{Classifier}
+Define $S$ as an input sentence with class $C = \{-1,1\}$ where $-1$ is a sentence that does not contain ADRs and $1$ is one that does. $S$ is comprised of words $W = \{w_1,...,w_n\}$. We classify $S$ as some $c_i \in C$ using $W$ as evidence. We say that $S$ is correctly classified if $c_i=c_j$ where $c_j$ is the true label of $S$. 
+\subsection{Google Search ADR Finder}
+Define $D$ to be the drug we are trying to find ADRs for using Google. Let $R = \{r_1,...,r_n\}$ be the search results returned by Google for the query ``<drug name> side effects''. Using $R$, let $S= \{s_1,...,s_m\}$ be the set of sentences contained in the webpages returned by Google. From $S$, we aim to find a list of ADRs $A = \{a_1,...,a_z\}$ that correspond to $D$.
+
+\section{Methods}
+\subsection{Classifier}
+The problem we are trying to solve is a supervised learning problem. Thus, we have labeled data and we want to carefully choose features that allow us to discriminate between samples of different labels. The corpus we use was provided by Ask a Patient and it consists of 15,198 sentences where 9,000 are positive samples and 6,198 are negative samples. On the Ask a Patient website, a user's drug review is separated into various fields: rating, reason, side-effects for <drug name>, comments, sex, age, duration/dosage, and date added. We consider the side-effects field as positive samples and the comments field as negative samples. Below is an example of the relevant part of an Ask a Patient user submitted review.
+
+\begin{tabular}{| p{4cm} | p{4cm} |}
+\hline
+Side Effect (Positive) & Comment (Negative) \\ \hline
+Dizziness; shortness of breath; nausea; headache; flue like symptoms; fatigue & My doctor knows I have asthma and have an allergic reaction to penicillin and sulfa drugs and yet I was given this med anyway. \\ \hline
+\end{tabular} 
+
+For this task, we will use the Support Vector Machine (SVM) classifier. We use Python's machine learning toolkit scikit-learn and its implementation of linear SVM called LinearSVC.
+
+\subsubsection{Features}
+To perform classification, we use unigrams, bigrams, trigrams, dependency parse information, and side-effects crawled from SIDER as features. To do feature selection, we use mutual information. Mutual information is defined as: 
+\begin{gather*}
+ratio = \log_{2} \frac{P(F=e_f,C=e_c)}{P(F=e_f)P(C=e_c)} \\ \\
+MI(F;C) = \sum\limits_{e_f \in \{1,0\}} \sum\limits_{e_c \in \{1,-1\}}P(F=e_f,C=e_c) \times ratio
+\end{gather*}
+$F$ is a random variable that represents whether a feature exists or not and $C$ is a random variable that represents which class is being dealt with. More generally, mutual information tells us how much knowing one variable reduces uncertainty about the other. If two variables are independent, the mutual information will be 0. Thus, for a feature, we can discover how much knowledge of that feature reduces uncertainty about the class. Those features with the highest mutual information with the class are the most discriminating features. Consequently, the features that are highest scoring are selected for our classifier.
+
+We describe each of our features below and show examples of the selected features. Note that we lemmatize the corpus using CoreNLP prior to selecting features.
+
+\paragraph{Unigrams}
+Unigrams are individual words in the dataset. We first iterate through the training portion of the Ask a Patient dataset and construct a set of all the unigrams occurring inside of it. Next, we compute the mutual information for each unigram feature and sort the features by their respective mutual information scores. Oftentimes, there are stop words in the sorted unigram set, so we remove any words in the sorted list that also occur in NLTK's stop word list. We then select the top-n features. Below are some example words that are selected as unigram features: 
+
+\noindent\fbox{%
+    \parbox{8cm}{%
+        help, sleep, appetite, eat, worse, joint, side, weight, sex, horrible, medicine, symptom, anxiety, headache, heart, medication, body, mouth, extreme, depression
+    }%
+} 
+
+Although the above is a subset of the retrieved unigram features, we noticed that most of the unigrams retrieved were relevant to the task of  discrminating between the classes.
+
+\paragraph{Bigrams}
+Bigrams are contiguous pairs of words in the dataset. We iterate through the training data and construct a set of all unique bigrams occurring in it. In exactly the same way as we did for unigrams, we compute the mutual information for each bigram feature and sort the features by their respective mutual information scores. The top-n bigram features are selected. Below are some example bigrams that are selected as features:
+
+\noindent\fbox{%
+    \parbox{8cm}{%
+        (my, body), (dry, mouth), (stop, take), (a, month), (start, take), (the, pill), (the, drug), (the, side), (side, effect), (blood, pressure), (could, not), (the, medication), (this, medication), (weight, gain), (my, doctor), (to, stop), (year, ago), (my, period), (not, take), (mood, swing), (this, pill)
+    }%
+}
+%\vspace{-1.55mm}
+
+\paragraph{Trigrams}
+Trigrams are contiguous triplets of words in the dataset. We iterate through the training data and construct a set of all unique trigrams occurring in it. We then compute the mutual information for each trigram feature and sort the features by their respective mutual information scores. The top-n trigram features are selected. Below are some example trigrams that are selected as features:
+
+\noindent\fbox{%
+    \parbox{8cm}{%
+        (stop, take, it), (have, be, take), (do, not, have), (all, the, time), (no, side, effect), (seem, to, be), (think, it, be), (feel, like, I), (loss, of, appetite), (I, have, never), (do, not, take), (in, the, morning), (side, effect, be), (and, I, be), (I, be, not), (have, be, on), (I, have, a)
+    }%
+}
+
+\paragraph{Dependency Parse Rules}
+We compute dependency parses for each sentence in the training corpus using Stanford's CoreNLP toolkit. Dependency parses contain useful relationship information between words. For example, consider the sentence ``After using it, I got a headache.'' We run Stanford's dependency parser on the sentence and obtain the following set of dependency rules:
+
+root(ROOT-0 , got-6) \\
+prepc\_after(got-6 , using-2) \\
+dobj(using-2 , it-3) \\ 
+nsubj(got-6 , I-5) \\
+det(headache-8 , a-7) \\
+dobj(got-6 , headache-8) 
+
+This parse is useful because after using mutual information to do feature selection on all of the individual rules that occur in the training set, we will most likely extract dependencies like dobj ( using-2 , it-3 ), nsubj ( got-6 , I-5 ), and dobj ( got-6 , headache-8 ). These extracted dependencies characterize sentences containing ADRs. Dependency parses also allow us to find non-contiguous relations that may be important classification features, but cannnot be discovered with n-grams. Below are some example dependency rules that are selected as features:
+
+\noindent\fbox{%
+    \parbox{8cm}{%
+        (advmod, far, so), (pobj, for, week), (cc, have, but), (prep, help, with), (poss, doctor, my), (advmod, take, again), (dobj, take, medication), (dobj, take, drug), (dobj, have, effect), (neg, no, effect), (prep, loss, of), (nn, sex, drive), (nn, effect, side), (nn, mood, swing), (det, the, pain), (pobj, at, night), (dobj, take, pill), (poss, my, life)
+    }%
+}
+
+\paragraph{SIDER Crawled Features}
+SIDER is a website that contains information about drugs and their confirmed ADRs. We crawl SIDER's side-effect list and tokenize multi-word side-effects into unigrams. From this process, we obtain 11,313 side-effect keywords that are treated as unigram features. Below are some of the side-effects crawled from SIDER:
+
+\noindent\fbox{%
+    \parbox{8cm}{%
+        indigestion, abscess, acne, blindness, disorder, haemorrhage, pneumonia, tryglycerides, arthritis, suicidal behavior, asthmatic attack, asocial behavior, stuttering, wheezing
+    }%
+}
+
+\subsection{Google Search ADR Finder}
+We are trying to retrieve as many ADRs as possible from Google. To do this, we retrieve the top $10$ search results for the query ``<drug name> side effects'', where ``<drug name>'' is the drug we are interested in finding ADRs for. We extract the text from the obtained webpages, and use our classifier to find sentences containing ADRs. Using the positively classified sentences, we create bigrams and sort them based on their frequencies. After removing highly common bigrams comprised of stop-words, we consider the bigrams at the top of this filtered list to be potential ADRs.
+
+\subsection{Summary of Method}
+We first obtain dependency parses for sentences in the training set using CoreNLP. We then lemmatize the words in these dependencies as well as the words in the sentences in our training set. Next, we use mutual information to select the most discriminative unigram, bigram, trigram, and dependency parse features. To finish feature selection, we add SIDER features to the set of unigram features. 
+
+Next, we create feature vectors for each training example. We first retrieve the unigrams, bigrams, trigrams, and dependency rules for the example. If any of these are in our feature set, we set the respective feature's flag to 1 in our feature vector. We pass all of the training feature vectors and their corresponding labels to a linear SVM to construct a model.
+
+To classify a test sentence, we use the aforementioned method to create a feature vector for the sentence and pass it to our previously constructed model to make a classification. 
+
+Finally, we use our Google Search ADR Finder described above coupled with our sentence classification method to create a list of potential ADR bigrams.
+
+\section{Evaluation}
+\subsection{Classifier}
+\vspace{2mm}
+\subsubsection{Data}
+As mentioned earlier, the data we use is provided by Ask a Patient and it consists of 15,198 sentences where 9,000 of them describe side-effects (positive samples) and 6,198 are comments about drugs (negative samples). We also use subsets of the 11,313 side-effect unigrams obtained from SIDER.
+
+\subsubsection{Experimental Setup}
+We first experiment with using each feature type in isolation and then try various combinations of feature types to find the best peforming one. We also tune the number of features from each feature type and aim to find the best performing distribution of features. The experiments we will run are outlined below:
+\vspace{-3mm}
+\begin{enumerate}
+\setlength\itemsep{0.2em}
+\item SIDER features (baseline)
+\item Unigrams
+\item Bigrams
+\item Trigrams
+\item Dependency Parse 
+\item Unigrams + Bigrams
+\item Unigrams + Bigrams + Trigrams
+\item Unigrams + Bigrams + Dependency Parse
+\item Unigrams + Bigrams + Dependency Parse + SIDER
+\end{enumerate}
+
+\paragraph{Cross Validation}
+Because we are dealing with an imbalanced dataset where we have more positive samples than negative, we use a downsampling scheme to equalize the classes. Thus, our modified dataset contains 6,198 positive samples and 6,198 negative samples. Sentence classes are interleaved (i.e positive, negative, positive, etc.) so that results are stabilized. We choose to use 12-fold cross validation for our experiments where each fold contains 1033 samples.
+We report overall accuracy, precision for positives/negative samples, recall for positives/negative samples, and F1 score for positives/negative samples. 
+
+\subsubsection{Results}
+To interpret our result tables, we provide a key for abbreviations. \textbf{Overall} $= \dfrac{\#\:correct}{total\:samples}$, \textbf{P.P} is the positive sample precision, \textbf{P.R} is the positive sample recall, and \textbf{P.F1} is the positive sample F1 score. Negative sample results are abbreviated similarly. 
+
+As a baseline, we first use all 11,313 SIDER unigrams as features. Our results are below:
+
+\captionof{table}{Isolated SIDER Results}
+\vspace{-3mm}
+\tabcolsep=0.11cm
+\begin{tabular}{| l | l | l | l | l | l | l |}
+\hline
+Overall & P.P & P.R. & P.F1 & N.P & N.R & N.F1 \\ \hline
+74.62 & 73.82 & 76.43 & 75.08 & 75.53 & 72.81 & 74.13 \\ \hline
+\end{tabular} 
+
+Below are our isolated results for unigram, bigram, trigram, and dependency parse features that are selected with mutual information. $n$ is the number of highest scoring features selected. 
+\captionof{table}{Isolated Unigram Results}
+\vspace{-3mm}
+\tabcolsep=0.11cm
+\begin{tabular}{| l | l | l | l | l | l | l | l |}
+\hline
+$n$ & Overall & P.P & P.R. & P.F1 & N.P & N.R & N.F1 \\ \hline
+100 & 79.57 & 80.25 & 78.44 & 79.33 & 78.93 & 80.69 & 79.79 \\ \hline
+200 & 81.15 & 81.74 & 80.22 & 80.96 & 80.60 & 82.08 & 80.96 \\ \hline
+300 & \bf{82.38} & \bf{83.31} & \bf{80.99} & \bf{82.13} & \bf{81.52} & \bf{83.77} & \bf{82.62} \\ \hline
+\end{tabular} 
+
+\captionof{table}{Isolated Bigram Results}
+\vspace{-3mm}
+\tabcolsep=0.11cm
+\begin{tabular}{| l | l | l | l | l | l | l | l |}
+\hline
+$n$ & Overall & P.P & P.R. & P.F1 & N.P & N.R & N.F1 \\ \hline
+100 & 75.16 & 72.43 & 81.28 & 76.59 & 78.69 & 69.04 & 73.53 \\ \hline
+200 & 77.11 & 74.54 & \bf{82.38} & 78.25 & 80.33 & \bf{82.38} & 75.82 \\ \hline
+300 & \bf{78.15} & \bf{76.04} & 82.20 & \bf{78.99} & \bf{80.66} & 74.09 & \bf{77.22} \\ \hline
+\end{tabular} 
+
+\captionof{table}{Isolated Trigram Results}
+\vspace{-3mm}
+\tabcolsep=0.11cm
+\begin{tabular}{| l | l | l | l | l | l | l | l |}
+\hline
+$n$ & Overall & P.P & P.R. & P.F1 & N.P & N.R & N.F1 \\ \hline
+100 & 71.89 & 68.51 & 81.06 & 74.25 & 76.85 & 62.73 & 69.06 \\ \hline
+200 & 73.13 & 69.83 & 81.48 & 75.19 & 77.83 & 64.78 & 70.68 \\ \hline
+300 & \bf{73.64} & \bf{70.39} & \bf{81.62} & \bf{75.58} & \bf{78.17} & \bf{65.65} & \bf{71.35} \\ \hline
+\end{tabular}
+
+\captionof{table}{Isolated Dependency Parse Results}
+\vspace{-3mm}
+\tabcolsep=0.11cm
+\begin{tabular}{| l | l | l | l | l | l | l | l |}
+\hline
+$n$ & Overall & P.P & P.R. & P.F1 & N.P & N.R & N.F1 \\ \hline
+100 & 73.76 & 70.67 & 81.27 & 75.57 & 78.07 & 66.25 & 71.63 \\ \hline
+200 & 76.12 & 73.54 & 81.69 & 77.63 & 79.51 & 70.56 & 74.71\\ \hline
+300 & \bf{76.51} & \bf{74.02} & \bf{81.75} & \bf{77.67} & \bf{79.69} & \bf{71.27} & \bf{75.20} \\ \hline
+\end{tabular} 
+
+Now, we try different combinations of features. $u$ is the number of unigram features, $b$ is the number of bigram features, $t$ is the number of trigram features, $d$ is the number of dependency parse features, and $s$ is the number of SIDER features.
+\captionof{table}{Unigrams + Bigrams Results}
+\vspace{-3mm}
+\tabcolsep=0.11cm
+\resizebox{\linewidth}{0.8cm}{
+\begin{tabular}{| l | l | l | l | l | l | l | l | l |}
+\hline
+$u$ & $b$ & Overall & P.P & P.R. & P.F1 & N.P & N.R & N.F1 \\ \hline
+300 & 200 & \bf{82.78} & \bf{83.10} & \bf{82.30} & \bf{82.70} & \bf{82.49} & \bf{83.27} & \bf{82.87} \\ \hline
+200 & 300 & 81.69 & 81.85 & 81.44 & 81.63 & 81.58 & 81.93 & 81.74 \\ \hline
+300 & 300 & 82.59 & 82.83 & 82.24 & 82.52 & 82.39 & 82.95 & 82.66 \\ \hline
+\end{tabular} 
+}
+\captionof{table}{Unigrams + Bigrams + Trigrams Results}
+\vspace{-3mm}
+\tabcolsep=0.11cm
+\resizebox{\linewidth}{1cm}{
+\begin{tabular}{| l | l | l | l | l | l | l | l | l | l |}
+\hline
+$u$ & $b$ & $t$ & Overall & P.P & P.R. & P.F1 & N.P & N.R & N.F1 \\ \hline
+300 & 200 & 50 & \bf{82.78} & \bf{83.00} & \bf{82.44} & \bf{82.71} & \bf{82.58} & \bf{83.11} & \bf{82.71} \\ \hline
+200 & 300 & 50 & 81.72 & 81.75 & 81.69 & 81.70 & 81.74 & 81.75 & 81.73 \\ \hline
+300 & 300 & 50 & 82.49 & 82.68 & 82.24 & 82.44 & 82.36 & 82.75 & 82.54\\ \hline
+300 & 200 & 100 & 82.56 & 82.87 & 82.12 & 82.49 & 82.30 & 83.03 & 82.66\\ \hline
+\end{tabular} 
+}
+\captionof{table}{Unigrams + Bigrams + Dependency Parse Results}
+\vspace{-3mm}
+\tabcolsep=0.11cm
+\resizebox{\linewidth}{1cm}{
+\begin{tabular}{| l | l | l | l | l | l | l | l | l | l |}
+\hline
+$u$ & $b$ & $d$ & Overall & P.P & P.R. & P.F1 & N.P & N.R & N.F1 \\ \hline
+200 & 300 & 200 & 83.74 & 83.53 & 83.16 & 83.32 & 83.27 & 83.59 & 83.42 \\ \hline
+300 & 300 & 200 & \bf{84.03} & \bf{84.52} & 83.32 & \bf{83.90} & 83.60 & \bf{84.74} & \bf{84.15} \\ \hline
+300 & 300 & 250 & 83.93 & 84.30 & 83.41 & 83.84 & 83.62 & 84.45 & 84.02\\ \hline
+300 & 300 & 150 & 84.01 & 84.39 & \bf{83.46} & \bf{83.90} & \bf{83.68} & 84.56 & 84.11\\ \hline
+\end{tabular} 
+}
+
+We set $u = 300$, $b = 300$, and $d = 200$ for the following experiment.
+\captionof{table}{Unigrams + Bigrams + Dependency Parse + SIDER Results}
+\vspace{-3mm}
+\tabcolsep=0.11cm
+\begin{tabular}{| l | l | l | l | l | l | l | l |}
+\hline
+$s$ & Overall & P.P & P.R. & P.F1 & N.P & N.R & N.F1 \\ \hline
+50 & \bf{84.10} & \bf{84.56} & \bf{83.45} & \bf{83.98} & \bf{83.71} & \bf{84.75} & \bf{84.21} \\ \hline
+100 & 84.02 & 84.49 & 83.35 & 83.90 & 83.62 & 84.69 & 84.13 \\ \hline
+\end{tabular} 
+\subsubsection{Analysis}
+
+In this section, we summarize the results of our experiments.
+
+\textbf{Unigram features perform better than bigram, trigram, and dependency parse features in isolation.} 
+Our feature vectors will be sparse even with unigrams, but when using bigrams, trigrams, and dependency parse features it will be even more rare to find a feature in an input sentence. Consequently, the classifier will misclassify more frequently because there will be many feature vectors that are just zero vectors which will correspond to contradicting labels.
+
+\textbf{Using too many trigram features negatively affects overall accuracy.} In isolation, trigrams perform poorly as features, but we do not base our conclusion off of those results. We instead first look at the Unigrams + Bigrams + Trigrams results. When $u=300$, $b=200$, and $t=50$, the overall accuracy is $82.78\%$. When we increase $t$ to $100$, the overall accuracy dips slightly to $82.56\%$. We notice, however, that in our unigrams + bigrams results where $t$ is effectively $0$, the recall on positive samples drops from $82.44\%$ to $82.30\%$ and the precision on negative samples drops from $82.58\%$ to $82.49\%$
+
+\textbf{Dependency parse features significantly improve results all across the board.} Looking at our unigrams + bigrams results we see that using $u=300$ and $b=300$, we get an overall accuracy of $82.59\%$. By adding $200$ dependency parse features, our overall accuracy improves to $84.03\%$ and all of our other evaluation metric results improve as well. 
+
+\textbf{Using a small number of SIDER features on top of unigrams + bigrams + dependency parse features yields the best performance by a slight margin according to all of our metrics.} Using $50$ SIDER unigram features, our overall accuracy improves from $84.03\%$ with unigrams + bigrams + dependency parse features to $84.10\%$.
+
+\subsection{Google Search ADR Finder}
+We use the best performing combination of features to build our classifier; this combination was empirically discovered in the previous section. We use $300$ unigram features, $300$ bigram features, $200$ dependency parse features, and $50$ SIDER features. In our experiment, we attempt to discover the ADRs of the drug Bicalutamide which is on the FDA's ``New and Generic Drug Approvals'' list for May 2015 \footnote{http://www.fda.gov/Drugs/NewsEvents/ucm130961.htm}.
+
+\subsubsection{Data}
+Our data is manually retrieved from the top $10$ Google search results for the query ``bicalutamide side effects''. For each of the obtained webpages, we make sure to only use text relevant to the article and not extraneous link text and advertisements.  
+
+\subsubsection{Experimental Setup}
+We run two experiments. In our first experiment, we use all sentences in our retrieved webpages and find the $50$ most frequently occurring unigrams and bigrams that aren't comprised of only stop-words. In our second experiment, we use only sentences that are classified as positive and similarly find the $50$ most frequently occurring unigrams and bigrams. These unigrams and bigrams are compared to a confirmed list of ADRs for Bicalutamide from the website RxList\footnote{http://www.rxlist.com/casodex-drug/patient-images-side-effects.htm}, which is a drug information database. The known ADRs of Bicalutamide are:
+\vspace{-3mm}
+\begin{enumerate}
+\setlength\itemsep{0.2em}
+\item chest pain, cough or trouble breathing
+\item feeling short of breath, even with mild exertion
+\item swelling in your hands or feet
+\item fever, chills, body aches, flu symptoms
+\item pale skin, easy bruising or bleeding
+\item blood in your urine
+\item nausea, pain in your upper stomach, itching, dark urine, clay-colored stools, jaundice (yellowing of the skin or eyes)
+\item hot flashes
+\item breast pain or swelling
+\item weakness, dizziness
+\item back pain, pelvic pain, joint or muscle pain
+\item increased nighttime urination
+\item upset stomach, vomiting, diarrhea or constipation
+\item weight changes
+\item impotence, loss of interest in sex, or trouble having an orgasm
+\item dizziness, headache
+\item sore throat, runny nose or other cold symptoms
+\end{enumerate} 
+
+\subsubsection{Results}
+In the experiments we conduct, only the ADRs found in the top $50$ most frequent $n$-grams are considered. Additionally, the $n$-grams displayed have been lemmatized and are selected based on whether any of the words comprising them exist in a known ADR.
+
+\paragraph{ADR Unigrams} Below are the ADR unigrams obtained using the two different sentence sets. 
+
+\captionof{table}{ADR Unigram Results}
+\vspace{-3mm}
+\tabcolsep=0.11cm
+\begin{tabular}{| l | l |}
+\hline
+Sentence Set & ADRs \\ \hline
+All sentences & pain \\ \hline
+Positively classified sentences & pain, skin, loss, swell, blood \\ \hline
+\end{tabular} 
+
+\paragraph{ADR Bigrams} Below are the ADR bigrams obtained using the two different sentence sets. 
+
+\captionof{table}{ADR Bigram Results}
+\vspace{-3mm}
+\tabcolsep=0.11cm
+\begin{tabular}{| p{2cm} | p{6cm} |}
+\hline
+Sentence Set & ADRs \\ \hline
+All sentences & (swell,of) \\ \hline
+Positively classified sentences & (loss, of), (swell, of), (chest, pain), (of, appetite), (skin, rash), (weight, gain), (or, swell) \\ \hline
+\end{tabular} 
+
+\section{Conclusion and Future Work}
+This paper presents features for a classifier that can be used to discriminate between sentences containing ADRs and those that do not. We plan on using this classifier to eventually build a system that crawls Google and detects ADRs for drugs that are newly approved by the FDA. 
+
+The problem we are trying to solve is very important because undetected ADRs can cause serious health problems for individuals. By identifying an ADR accurately and at an early stage, drugs can be recalled by manufacturers before a large population of people is afflicted. Our solution is necessary because the FDA's pharmacovigilance tool, MedWatch, contains noisy and incomplete data. Additionally, in recent years, more patients are posting their experiences with drugs online and in order to take advantage of this large amount of data, we need a method of extracting ADR-containing sentences.
+
+We obtain our dataset from Ask a Patient, which contains user submitted drug reviews. In these reviews, side-effects are described in detail and additional comments are also included by the user. Because side-effects and comments are separate fields, we treat them as positive and negative samples respectively. For features, our classifier uses side-effects crawled from SIDER, unigrams, bigrams, trigrams, and dependency parse information from Stanford's CoreNLP toolkit. We make sure to use CoreNLP to lemmatize n-gram and dependency rule features to alleviate word sparsity problems.
+
+We obtain our best performance using a combination of unigram, bigram, dependency parse, and SIDER features. Our overall accuracy is $84.10\%$. However, there is still significant room for improvement. A future improvement we want to make is to use the Turku Event Extraction System (TEES)\footnote{http://bionlp.utu.fi/eventextractionsoftware.html}, an open source NLP system for the biomedical domain, to perform NER to identify drugs in a sentence and then anayze dependency rules containing these drugs more carefully. We aim to look into more deep, syntactic features to improve classification.
+
+%ACKNOWLEDGMENTS are optional
+\section{Acknowledgments}
+I would like to thank Ask a Patient for providing me with a clean dataset to train my classifier on. I would also like to thank Professor ChengXiang Zhai and Sheng Wang for their mentorship. 
+%
+% The following two commands are all you need in the
+% initial runs of your .tex file to
+% produce the bibliography for the citations in your paper.
+\bibliographystyle{abbrv}
+\bibliography{sigproc}  % sigproc.bib is the name of the Bibliography in this case
+% You must have a proper ".bib" file
+%  and remember to run:
+% latex bibtex latex latex
+% to resolve all references
+%
+% ACM needs 'a single self-contained file'!
+%
+%APPENDICES are optional
+%\balancecolumns
+
+% That's all folks!
+\end{document}
